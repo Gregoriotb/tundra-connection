@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Tundra Connection — Local development stack
 # Spec: Orquestor.md §FASE 1 + ARCHITECTURE.md
 # - Postgres 16 (mirror de Neon en prod)
