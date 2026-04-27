@@ -1,0 +1,13 @@
+# Tundra Connection — Backend dependencies (FASE 1)
+fastapi==0.110.3
+uvicorn[standard]==0.29.0
+pydantic==2.7.1
+pydantic-settings==2.2.1
+email-validator==2.1.1
+SQLAlchemy==2.0.30
+alembic==1.13.1
+psycopg2-binary==2.9.9
+bcrypt==4.1.3
+PyJWT==2.8.0
+slowapi==0.1.9
+python-multipart==0.0.9
