@@ -1,0 +1,110 @@
+​<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tundra Connection | Industrial Tech</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script>
+tailwind.config = {
+theme: {
+extend: {
+colors: {
+'gold-tundra': '#C5A059',
+'gold-bright': '#FACC15',
+'black-deep': '#050505',
+}
+}
+}
+}
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Outfit:wght@300;600;900&display=swap');
+body { background-color: #050505; color: #ffffff; font-family: 'Outfit', sans-serif; overflow-x: hidden; }
+.font-power { font-family: 'Archivo Black', sans-serif; }
+#canvas-bg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; background: radial-gradient(circle at center, #0a0a0a 0%, #000000 100%); }
+.sidebar { position: fixed; top: 0; left: -100%; width: 320px; height: 100%; background: #0a0a0a; border-right: 1px solid rgba(197, 160, 89, 0.2); z-index: 200; transition: all 0.5s cubic-bezier(0.77, 0, 0.175, 1); padding: 4rem 2rem; }
+.sidebar.active { left: 0; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 150; display: none; }
+.overlay.active { display: block; }
+.nav-link { font-family: 'Archivo Black', sans-serif; font-size: 1.1rem; color: #555; text-transform: uppercase; transition: all 0.3s; display: block; margin-bottom: 1.2rem; }
+.nav-link:hover, .nav-link.active { color: #C5A059; transform: translateX(10px); }
+.gold-border-top { border-top: 4px solid #C5A059; }
+.glass-card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(197, 160, 89, 0.1); backdrop-filter: blur(10px); }
+.section-title { font-family: 'Archivo Black', sans-serif; font-size: clamp(2.5rem, 10vw, 6rem); line-height: 0.9; color: transparent; -webkit-text-stroke: 1px rgba(197, 160, 89, 0.5); text-transform: uppercase; }
+.section-title.filled { color: #C5A059; -webkit-text-stroke: 0; }
+.btn-main { background: #C5A059; color: #000; font-weight: 900; padding: 1rem 2rem; text-transform: uppercase; letter-spacing: 1px; transition: 0.3s; display: inline-block; }
+.btn-main:hover { background: #fff; transform: scale(1.05); }
+</style>
+</head>
+<body>
+<canvas id="canvas-bg"></canvas>
+<header class="fixed w-full z-[100] px-6 py-6 flex justify-between items-center">
+<button onclick="toggleSidebar()" class="w-10 h-10 flex flex-col justify-center gap-1.5 group">
+<span class="w-8 h-1 bg-gold-tundra transition-all group-hover:w-10"></span>
+<span class="w-10 h-1 bg-gold-tundra"></span>
+<span class="w-5 h-1 bg-gold-tundra transition-all group-hover:w-10"></span>
+</button>
+<span class="font-power text-xl tracking-tighter uppercase italic">TUNDRA<span class="text-gold-tundra">.</span></span>
+<a href="https://wa.me/584127100218" class="font-power text-[9px] tracking-widest text-gold-tundra border border-gold-tundra px-4 py-2 hover:bg-gold-tundra hover:text-black transition">WHATSAPP</a>
+</header>
+<div class="overlay" id="overlay" onclick="toggleSidebar()"></div>
+<div class="sidebar" id="sidebar">
+<button onclick="toggleSidebar()" class="absolute top-8 right-8 text-gold-tundra text-xl"><i class="fas fa-times"></i></button>
+<p class="text-[9px] tracking-[0.4em] text-white/20 uppercase mb-10 font-bold">SOLUCIONES</p>
+<nav>
+<a href="javascript:void(0)" onclick="navTo('home')" class="nav-link active" id="link-home">Inicio</a>
+<a href="javascript:void(0)" onclick="navTo('fibra')" class="nav-link" id="link-fibra">Fibra Óptica</a>
+<a href="javascript:void(0)" onclick="navTo('radio')" class="nav-link" id="link-radio">Radio Enlaces</a>
+<a href="javascript:void(0)" onclick="navTo('camaras')" class="nav-link" id="link-camaras">Seguridad IA</a>
+<a href="javascript:void(0)" onclick="navTo('domotica')" class="nav-link" id="link-domotica">Domótica</a>
+<a href="javascript:void(0)" onclick="navTo('cableado')" class="nav-link" id="link-cableado">Cableado</a>
+<a href="javascript:void(0)" onclick="navTo('plan')" class="nav-link" id="link-plan">Planificación</a>
+</nav>
+</div>
+<main id="main-content" class="min-h-screen pt-32">
+<section id="home-section" class="px-6 flex flex-col items-center justify-center min-h-[60vh] text-center">
+<h1 class="section-title filled">TUNDRA</h1>
+<h1 class="section-title italic">CONNECTION</h1>
+<p class="max-w-xl mx-auto text-white/30 text-xs tracking-[0.3em] uppercase py-8 font-bold">Ingeniería en Telecomunicaciones & Seguridad</p>
+<div class="flex flex-wrap justify-center gap-4">
+<button onclick="toggleSidebar()" class="btn-main">Ver Servicios</button>
+</div>
+</section>
+<section id="detail-section" class="hidden px-6 pb-20">
+<div class="max-w-5xl mx-auto">
+<div class="gold-border-top glass-card p-8 md:p-16" id="content-body"></div>
+</div>
+</section>
+</main>
+<script>
+const data = {
+fibra: { title: "Fibra Óptica", subtitle: "GPON Industrial", desc: "Redes simétricas de alta capacidad para empresas y búnkers tecnológicos.", features: ["Latencia < 5ms", "Capacidad 10Gbps", "SLA Garantizado"] },
+radio: { title: "Radio Enlaces", subtitle: "Carrier-Class", desc: "Conectividad inalámbrica punto a punto para zonas remotas o backhaul industrial.", features: ["Alcance 50km+", "Banda Licenciada", "Resistencia Climática"] },
+camaras: { title: "Seguridad IA", subtitle: "Video Analítica", desc: "Sistemas CCTV 4K con detección inteligente de intrusos y reconocimiento facial.", features: ["Detección Humana", "Visión Nocturna Color", "Alertas en Tiempo Real"] },
+domotica: { title: "Domótica Pro", subtitle: "Smart Spaces", desc: "Automatización integral de iluminación, accesos y clima bajo control centralizado.", features: ["Control Remoto", "Eficiencia Energética", "Escenas Inteligentes"] },
+cableado: { title: "Cableado", subtitle: "Normas TIA/EIA", desc: "Infraestructura física certificada en Cat6a y Cat7 para redes de alto tráfico.", features: ["Certificación Fluke", "Organización Racks", "Garantía de Obra"] },
+plan: { title: "Planificación", subtitle: "Consultoría", desc: "Diseño de topologías y mapas de calor WiFi para optimización de cobertura.", features: ["Mapas de Calor", "Auditoría de Red", "Diseño de Proyecto"] }
+};
+function navTo(id) {
+const home = document.getElementById('home-section');
+const detail = document.getElementById('detail-section');
+const body = document.getElementById('content-body');
+toggleSidebar();
+document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+document.getElementById('link-' + id).classList.add('active');
+if (id === 'home') { home.classList.remove('hidden'); detail.classList.add('hidden'); return; }
+home.classList.add('hidden'); detail.classList.remove('hidden');
+const s = data[id];
+body.innerHTML = <p class="text-gold-tundra font-bold tracking-widest text-[10px] uppercase mb-2">${s.subtitle}</p><h2 class="font-power text-4xl md:text-6xl uppercase mb-6">${s.title}</h2><div class="grid md:grid-cols-2 gap-8"><p class="text-white/50 text-sm leading-relaxed">${s.desc}</p><div class="space-y-2">${s.features.map(f => <div class="flex items-center gap-3 border-b border-white/5 pb-2"><i class="fas fa-plus text-gold-tundra text-[8px]"></i><span class="text-[10px] font-bold uppercase tracking-widest">${f}</span></div>).join('')}</div></div><a href="https://wa.me/584127100218" class="btn-main mt-10">Agendar Visita</a>;
+window.scrollTo({top:0, behavior:'smooth'});
+}
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('active'); document.getElementById('overlay').classList.toggle('active'); }
+const canvas = document.getElementById('canvas-bg'); const ctx = canvas.getContext('2d'); let particles = [];
+function initCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; particles = []; for (let i = 0; i < 50; i++) { particles.push({ x: Math.random() * canvas.width, y: Math.random() * canvas.height, size: Math.random() * 1.5, speedY: Math.random() * 0.3 + 0.1, opacity: Math.random() }); } }
+function animate() { ctx.clearRect(0, 0, canvas.width, canvas.height); particles.forEach(p => { p.y -= p.speedY; if (p.y < 0) p.y = canvas.height; ctx.fillStyle = rgba(197, 160, 89, ${p.opacity}); ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill(); }); requestAnimationFrame(animate); }
+window.onload = () => { initCanvas(); animate(); }; window.onresize = initCanvas;
+</script>
+</body>
+</html>
