@@ -23,6 +23,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1 import auth as auth_router
 from app.api.v1 import catalog as catalog_router
+from app.api.v1 import invoices as invoices_router
+from app.api.v1 import services as services_router
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging_config import configure_logging
@@ -122,3 +124,9 @@ app.include_router(
     prefix="/admin/catalog",
     tags=["catalog-admin"],
 )
+app.include_router(
+    services_router.public_router,
+    prefix="/services",
+    tags=["services"],
+)
+app.include_router(invoices_router.router, prefix="/invoices", tags=["invoices"])

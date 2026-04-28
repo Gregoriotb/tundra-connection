@@ -21,6 +21,7 @@ import axios, {
 } from 'axios';
 
 import type { CatalogItem } from '../components/CatalogCard';
+import type { Service } from '../components/ServiceCard';
 import type {
   ApiErrorResponse,
   AuthTokens,
@@ -224,5 +225,75 @@ export const catalogApi = {
   },
   getById(id: string): Promise<CatalogItem> {
     return get<CatalogItem>(`/catalog/${id}`);
+  },
+};
+
+// ─── Services ─────────────────────────────────────────────────────────────
+
+interface ServiceListResponse {
+  items: Service[];
+  total: number;
+}
+
+export const servicesApi = {
+  list(): Promise<ServiceListResponse> {
+    return get<ServiceListResponse>('/services');
+  },
+  getBySlug(slug: string): Promise<Service> {
+    return get<Service>(`/services/${slug}`);
+  },
+};
+
+// ─── Invoices ─────────────────────────────────────────────────────────────
+
+export interface ProductSaleCheckoutBody {
+  tipo: 'PRODUCT_SALE';
+  items: Array<{
+    item_id: string;
+    quantity: number;
+    unit_price?: string;
+  }>;
+}
+
+export interface InternetServiceCheckoutBody {
+  tipo: 'INTERNET_SERVICE';
+  service_id: string;
+  plan_id: string;
+  direccion_instalacion: string;
+}
+
+export type CheckoutBody = ProductSaleCheckoutBody | InternetServiceCheckoutBody;
+
+export interface Invoice {
+  id: string;
+  user_id: string;
+  tipo: 'PRODUCT_SALE' | 'INTERNET_SERVICE' | 'SERVICE_QUOTATION';
+  estado: 'pending' | 'paid' | 'cancelled' | 'overdue' | 'refunded';
+  subtotal: string;
+  tax_amount: string;
+  total: string;
+  items: Array<Record<string, unknown>>;
+  direccion_instalacion: string | null;
+  plan_seleccionado: Record<string, unknown> | null;
+  extra_data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  paid_at: string | null;
+}
+
+interface InvoiceListResponse {
+  items: Invoice[];
+  total: number;
+}
+
+export const invoicesApi = {
+  checkout(body: CheckoutBody): Promise<Invoice> {
+    return post<CheckoutBody, Invoice>('/invoices/checkout', body);
+  },
+  myInvoices(): Promise<InvoiceListResponse> {
+    return get<InvoiceListResponse>('/invoices/my-invoices');
+  },
+  getById(id: string): Promise<Invoice> {
+    return get<Invoice>(`/invoices/${id}`);
   },
 };

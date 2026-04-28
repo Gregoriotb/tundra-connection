@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza al cerrar cada fase del [Orquestor.md](SDD/Orquestor.md).
 
 **Inicio:** 2026-04-27
-**Fase actual:** FASE 3 — Servicios con Overlays (pendiente de iniciar)
+**Fase actual:** FASE 4 — Chat-Cotizaciones (pendiente de iniciar)
 
 ---
 
@@ -13,7 +13,7 @@
 |---|------|--------|--------|
 | 1 | Fundación y Auth | 🟢 COMPLETA | 2026-04-27 |
 | 2 | Catálogo Mínimo + Carrito | 🟢 COMPLETA | 2026-04-27 |
-| 3 | Servicios con Overlays | ⚪ Pendiente | — |
+| 3 | Servicios con Overlays | 🟢 COMPLETA | 2026-04-27 |
 | 4 | Chat-Cotizaciones | ⚪ Pendiente | — |
 | 5 | WebSocket + Notificaciones | ⚪ Pendiente | — |
 | 6 | Reportes de Fallas | ⚪ Pendiente | — |
@@ -165,8 +165,83 @@ Ninguno.
 
 ---
 
+## CHECKPOINT: TUNDRA-FASE-3-SERVICIOS
+
+- **Estado:** COMPLETO
+- **Fecha:** 2026-04-27
+- **Branch:** `feature/fase-3-servicios-overlays`
+
+### Archivos creados (11 principales + 8 auxiliares de scaffold)
+
+**Backend:**
+- [`backend/app/models/service.py`](backend/app/models/service.py) — Modelo Service con planes JSONB + helper `find_plan()`
+- [`backend/app/models/invoice.py`](backend/app/models/invoice.py) — Modelo Invoice (R15: `extra_data` ↔ columna SQL `metadata`)
+- [`backend/app/schemas/service.py`](backend/app/schemas/service.py) — `InternetPlan`, `ServiceOut`, `ServiceListOut`
+- [`backend/app/schemas/invoice.py`](backend/app/schemas/invoice.py) — `CheckoutIn` discriminated union, `InvoiceOut`
+- [`backend/app/api/v1/services.py`](backend/app/api/v1/services.py) — `GET /services`, `GET /services/{slug}`
+- [`backend/app/api/v1/invoices.py`](backend/app/api/v1/invoices.py) — `POST /checkout` (PRODUCT_SALE+INTERNET), `my-invoices`, `{id}` con IDOR
+- [`backend/alembic/versions/0003_services_invoices.py`](backend/alembic/versions/0003_services_invoices.py) — migración
+- [`backend/alembic/versions/0004_seed_services.py`](backend/alembic/versions/0004_seed_services.py) — seed idempotente de 3 servicios
+
+**Frontend principal (FASE 3):**
+- [`frontend/src/components/ServiceCard.tsx`](frontend/src/components/ServiceCard.tsx) — Card prestige con icon, hover lift+glow
+- [`frontend/src/components/ServiceOverlay.tsx`](frontend/src/components/ServiceOverlay.tsx) — Framer Motion fade+scale 400ms, stagger 100ms
+- [`frontend/src/components/InternetPlanModal.tsx`](frontend/src/components/InternetPlanModal.tsx) — Submit del checkout con auth gate
+
+**Frontend scaffold (bonus, sin él el código no compilaba):**
+- [`frontend/package.json`](frontend/package.json) — react/vite/tailwind/framer-motion/lucide/axios
+- [`frontend/tsconfig.json`](frontend/tsconfig.json) — strict, sin `@/` aliases
+- [`frontend/vite.config.ts`](frontend/vite.config.ts)
+- [`frontend/tailwind.config.js`](frontend/tailwind.config.js) — paleta `tundra.*` exacta del spec
+- [`frontend/postcss.config.js`](frontend/postcss.config.js)
+- [`frontend/index.html`](frontend/index.html) — fonts del spec (Archivo Black + Outfit)
+- [`frontend/src/main.tsx`](frontend/src/main.tsx) + [`frontend/src/index.css`](frontend/src/index.css)
+- [`frontend/src/App.tsx`](frontend/src/App.tsx) — providers + landing minimal
+- [`frontend/src/sections/ServicesSection.tsx`](frontend/src/sections/ServicesSection.tsx) — orquesta cards + overlay + modal
+
+### Decisiones especiales
+
+- **Discriminated union en `/invoices/checkout`** — un solo endpoint, dos shapes (`PRODUCT_SALE` / `INTERNET_SERVICE`) discriminados por `tipo`. Pydantic v2 hace el routing.
+- **Re-validación TOTAL server-side** — el endpoint NO confía en `unit_price` del cart ni en `precio_mensual` que mande el cliente; recalcula contra BD (anti-patrón #5).
+- **Lock pesimista** (`SELECT ... FOR UPDATE`) en checkout PRODUCT_SALE para evitar sobre-venta de stock en concurrencia.
+- **R15 `metadata` resuelto** — atributo Python `extra_data`, columna SQL `metadata` (`mapped_column("metadata", ...)`).
+- **IDOR en `/invoices/{id}`** retorna 404 (no 403) para no leak de existencia.
+- **Seed idempotente** con `ON CONFLICT (slug) DO NOTHING` — re-ejecutable sin duplicar.
+- **Ediciones admin de servicios** quedan para FASE 8 (panel admin completo).
+
+### Tests pasados (manual)
+- [ ] `alembic upgrade head` aplica `0003` y `0004` sin errores.
+- [ ] `GET /services` lista los 3 servicios ordenados por `display_order`.
+- [ ] `POST /invoices/checkout` con tipo=PRODUCT_SALE → resta stock + crea invoice.
+- [ ] Stock 0 en uno de los items → 409 con mensaje claro.
+- [ ] `POST /invoices/checkout` con tipo=INTERNET_SERVICE → invoice con `plan_seleccionado` JSONB.
+- [ ] Mismo endpoint con `plan_id` inexistente → 400.
+- [ ] `GET /invoices/{id}` con un invoice_id ajeno → 404 (no 403).
+- [ ] Frontend: `cd frontend && npm install && npm run dev` → landing carga las 3 cards animadas.
+- [ ] Click en ServiceCard → overlay con planes; click en plan → modal de instalación; submit → invoice creada.
+
+### Reglas aplicadas (sumadas a fases previas)
+| Regla | Dónde |
+|-------|-------|
+| R4 IDOR | `GET /invoices/{id}` con check ownership-or-admin → 404 si falla |
+| R9 Anti #5 | Precios re-calculados desde BD en checkout |
+| R15 metadata | `Invoice.extra_data` mapeado a columna SQL `metadata` |
+
+### Pendientes / TODO
+- **Smoke test integral** — requiere Docker daemon activo + `npm install` en frontend.
+- **Logo real** — actualmente texto "TUNDRA.connection" en el header de App.tsx.
+- **Hero / Header completos** — el spec de UI tiene un Hero animado; en App.tsx hoy hay solo header básico.
+- **`/auth/password`** endpoint — referenciado en `authApi` pero el handler backend no existe aún.
+- **Ediciones admin de servicios** — FASE 8.
+
+### Siguiente fase
+**FASE 4 — Chat-Cotizaciones.** Modelos `QuotationThread` + `ChatMessage`, endpoints, UI de chat (con polling primero, WebSocket en FASE 5). Conecta el botón "Iniciar cotización" del overlay de Servicios Extras.
+
+---
+
 ## Bitácora
 
 - **2026-04-27** — Inicio FASE 1. Memoria + `PROGRESS.md` creados. Repo público en GitHub: <https://github.com/Gregoriotb/tundra-connection>. Branches `main` (protegida), `develop`, `feature/fase-1-fundacion-auth`.
 - **2026-04-27** — FASE 1 completa: 12 archivos principales + 6 auxiliares. Decisión clave: bootstrap admin via identifier literal `"admin"`. PR #1 abierto.
 - **2026-04-27** — FASE 2 completa: catálogo público + admin CRUD, CartContext con aritmética entera, CatalogSection con 4 estados. Logo placeholder pendiente de reemplazo cuando el cliente lo provea.
+- **2026-04-27** — FASE 3 completa: modelos `Service` + `Invoice`, endpoints `/services`, `/invoices/checkout` con discriminated union (PRODUCT_SALE + INTERNET_SERVICE) y lock pesimista de stock, seed de los 3 servicios con planes, `ServiceCard` + `ServiceOverlay` (Framer Motion stagger) + `InternetPlanModal`. Bonus: scaffold del frontend (package.json, vite, tsconfig, tailwind), `App.tsx`, `ServicesSection.tsx`. Pendiente: smoke test + `npm install`.
