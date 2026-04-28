@@ -1,0 +1,82 @@
+# Tundra Connection — Producción local mirror (FASE 11 paso A5)
+#
+# Objetivo: validar que la imagen del Dockerfile funciona en modo producción
+# antes de desplegar a Railway. NO es para servir tráfico real.
+#
+# Diferencias vs docker-compose.yml (dev):
+#   - Sin volúmenes bind-mount al código fuente (la imagen es inmutable)
+#   - Sin --reload en uvicorn (CMD del Dockerfile manda)
+#   - ENVIRONMENT=production → activa assert_production_safe()
+#   - Nginx omitido (Vercel lo reemplaza en prod real)
+#   - Postgres incluido para que el smoke test sea standalone — en Railway
+#     real se reemplaza por DATABASE_URL apuntando a Neon
+#
+# Uso:
+#   1. Copiar .env.prod.example a .env.prod y rellenar SECRET_KEY (64+ chars)
+#   2. docker compose -f docker-compose.prod.yml --env-file .env.prod up --build
+#   3. curl http://localhost:8000/healthz  → debe retornar {"status":"ok","db":"up"}
+#   4. Smoke: register/login/catalog
+#   5. docker compose -f docker-compose.prod.yml down -v  (limpia volumes)
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tundra-db-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tundra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: tundra_connection
+    volumes:
+      - tundra_pg_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tundra -d tundra_connection"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tundra_prod_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: tundra-backend:prod
+    container_name: tundra-backend-prod
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ── Core (production-safe asserts) ─────────────────────────────────
+      ENVIRONMENT: production
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY required (64+ chars)}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      DATABASE_URL: postgresql://tundra:${POSTGRES_PASSWORD}@db:5432/tundra_connection
+      PORT: "8000"
+
+      # ── Optional providers (vacíos por default — modo maqueta) ────────
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      IMGBB_API_KEY: ${IMGBB_API_KEY:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@tundraconnection.com}
+
+      # ── Logging ────────────────────────────────────────────────────────
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8000:8000"
+    volumes:
+      # Solo uploads — el código fuente está dentro de la imagen.
+      - tundra_uploads_prod:/app/uploads
+    networks:
+      - tundra_prod_net
+
+volumes:
+  tundra_pg_prod_data:
+  tundra_uploads_prod:
+
+networks:
+  tundra_prod_net:
+    driver: bridge
