@@ -21,7 +21,7 @@
 | 8 | Admin Completo | ⚪ Pendiente | — |
 | 9 | Grafana Integration | ⚪ Pendiente | — |
 | 10 | Email Service | ⚪ Pendiente | — |
-| 11 | Deploy | ⚪ Pendiente | — |
+| 11 | Deploy + Sweep integraciones | ⚪ Pendiente | — |
 
 ---
 
@@ -501,12 +501,18 @@ Ninguno.
 | R9 | magic bytes + size + sanitize_filename |
 | R3 | state token CSRF en Google login URL |
 
-### Pendientes / TODO (sweep final de integración)
-1. **Google OAuth real** — implementar el intercambio code→tokens en `auth.py /google/callback`. Comentado paso a paso en el código.
-2. **ImgBB real** — descomentar bloque `httpx` en `upload_service._upload_to_imgbb`. La firma ya está correcta.
-3. **`python-magic`** — swap de magic bytes manuales por libmagic completo.
-4. **Tabla / campo para `rif_document_url`** — si el negocio quiere persistir el doc subido (no solo el número).
-5. **Logo real** — sigue como texto "TUNDRA.connection" en el header.
+### Pendientes / TODO → consolidados en FASE 11
+**Decisión 2026-04-28**: el sweep de integraciones reales se hace en FASE 11 junto con el deploy a Neon/Railway/Vercel. Tiene sentido porque todos requieren credenciales reales y se prueban con deploy real.
+
+Lista consolidada para FASE 11:
+1. **Neon** — DB serverless en producción (URL real en `DATABASE_URL`).
+2. **Railway** — deploy del backend Docker.
+3. **Vercel** — deploy del frontend.
+4. **Google OAuth real** — credenciales + intercambio code→tokens (TODO documentado en `auth.py`).
+5. **ImgBB real** — `IMGBB_API_KEY` + descomentar bloque `httpx` en `upload_service._upload_to_imgbb`.
+6. **`python-magic`** — swap de magic bytes manuales por libmagic.
+7. **Tabla / campo para `rif_document_url`** — si el negocio quiere persistir el doc subido.
+8. **Logo real** — reemplazar el texto del header.
 
 ### Siguiente fase
 **FASE 8 — Admin Completo.** Página `AdminPage` con tabs (Monitoreo, Cotizaciones, Catálogo, Facturas, Soporte, API Keys), `/admin/api-keys` endpoints completos, export-all, protección de rutas admin. Activa todo lo que ya existe en backend pero aún no tiene UI.
