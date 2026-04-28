@@ -23,6 +23,9 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from app.api.v1 import admin as admin_router
+from app.api.v1 import api_keys as api_keys_router
+from app.api.v1 import grafana as grafana_router
 from app.api.v1 import auth as auth_router
 from app.api.v1 import catalog as catalog_router
 from app.api.v1 import chat_quotations as chat_router
@@ -146,6 +149,11 @@ app.include_router(
 )
 app.include_router(invoices_router.router, prefix="/invoices", tags=["invoices"])
 app.include_router(
+    invoices_router.admin_router,
+    prefix="/admin/invoices",
+    tags=["invoices-admin"],
+)
+app.include_router(
     chat_router.client_router,
     prefix="/chat-quotations",
     tags=["chat"],
@@ -182,6 +190,21 @@ app.include_router(
     tickets_router.admin_router,
     prefix="/admin/support-tickets",
     tags=["support-tickets-admin"],
+)
+app.include_router(
+    api_keys_router.router,
+    prefix="/admin/api-keys",
+    tags=["api-keys-admin"],
+)
+app.include_router(
+    admin_router.router,
+    prefix="/admin",
+    tags=["admin"],
+)
+app.include_router(
+    grafana_router.router,
+    prefix="/admin/grafana",
+    tags=["grafana-admin"],
 )
 # WebSocket endpoint (no prefix — el path completo es /ws).
 app.include_router(ws_handlers.router, tags=["websocket"])

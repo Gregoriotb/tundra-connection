@@ -13,20 +13,25 @@ Endpoints:
     POST /invoices/checkout                    — crea factura PRODUCT_SALE | INTERNET_SERVICE
     GET  /invoices/my-invoices                 — facturas del usuario actual
     GET  /invoices/{id}                        — detalle (con check IDOR)
+
+Admin (FASE 8):
+    GET   /admin/invoices                      — lista global con filtros
+    PATCH /admin/invoices/{id}/status          — cambio de estado
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, require_admin
 from app.models.catalog_item import CatalogItem
 from app.models.invoice import Invoice
 from app.models.service import Service
@@ -36,12 +41,15 @@ from app.schemas.invoice import (
     InternetServiceCheckoutIn,
     InvoiceListOut,
     InvoiceOut,
+    InvoiceUpdateStatusIn,
     ProductSaleCheckoutIn,
 )
+from app.services.email_service import send_invoice_created
 from app.services.notification_service import notify
 
 logger = logging.getLogger("tundra.invoices")
 router = APIRouter()
+admin_router = APIRouter()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +97,14 @@ def checkout(
         invoice.id,
         invoice.tipo,
         invoice.total,
+    )
+    # Email best-effort (R6).
+    send_invoice_created(
+        current_user,
+        invoice_id=str(invoice.id),
+        total=str(invoice.total),
+        tipo=invoice.tipo,
+        estado=invoice.estado,
     )
     return InvoiceOut.model_validate(invoice)
 
@@ -293,5 +309,100 @@ def get_invoice(
         )
         # 404 (no 403) → no leak de existencia.
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+
+    return InvoiceOut.model_validate(invoice)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADMIN — GET /admin/invoices
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@admin_router.get(
+    "",
+    response_model=InvoiceListOut,
+    summary="Lista global de facturas con filtros (admin).",
+)
+def admin_list_invoices(
+    estado: Optional[str] = Query(default=None),
+    tipo: Optional[str] = Query(default=None),
+    user_id: Optional[UUID] = Query(default=None),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+) -> InvoiceListOut:
+    stmt = select(Invoice).order_by(desc(Invoice.created_at))
+    if estado:
+        stmt = stmt.where(Invoice.estado == estado)
+    if tipo:
+        stmt = stmt.where(Invoice.tipo == tipo)
+    if user_id:
+        stmt = stmt.where(Invoice.user_id == user_id)
+
+    rows = list(db.scalars(stmt).all())
+    return InvoiceListOut(
+        items=[InvoiceOut.model_validate(inv) for inv in rows],
+        total=len(rows),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ADMIN — PATCH /admin/invoices/{id}/status
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@admin_router.patch(
+    "/{invoice_id}/status",
+    response_model=InvoiceOut,
+    summary="Cambia el estado de una factura (admin).",
+)
+def admin_update_status(
+    invoice_id: UUID,
+    payload: InvoiceUpdateStatusIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+) -> InvoiceOut:
+    invoice = db.scalar(select(Invoice).where(Invoice.id == invoice_id))
+    if invoice is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found")
+
+    prev = invoice.estado
+    invoice.estado = payload.estado
+    if payload.estado == "paid" and invoice.paid_at is None:
+        invoice.paid_at = datetime.now(timezone.utc)
+
+    if payload.nota:
+        history = list(invoice.extra_data.get("status_history", []))
+        history.append(
+            {
+                "from": prev,
+                "to": payload.estado,
+                "by": str(admin.id),
+                "at": datetime.now(timezone.utc).isoformat(),
+                "note": payload.nota,
+            }
+        )
+        # Reasignar dict completo para que SQLAlchemy detecte el cambio (R5).
+        invoice.extra_data = {**invoice.extra_data, "status_history": history}
+
+    db.commit()
+    db.refresh(invoice)
+
+    logger.warning(
+        "invoices.admin.status_change admin_id=%s invoice_id=%s %s→%s",
+        admin.id,
+        invoice.id,
+        prev,
+        payload.estado,
+    )
+    notify(
+        db,
+        user_id=invoice.user_id,
+        tipo="invoice_status_change",
+        payload={
+            "invoice_id": str(invoice.id),
+            "estado": payload.estado,
+            "from": prev,
+        },
+    )
 
     return InvoiceOut.model_validate(invoice)

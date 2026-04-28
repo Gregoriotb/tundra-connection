@@ -43,6 +43,7 @@ from app.schemas.ticket import (
     TicketReplyIn,
     TicketStatusUpdateIn,
 )
+from app.services.email_service import send_ticket_updated
 from app.services.notification_service import notify
 from app.utils.sanitize import sanitize_user_text
 from app.websocket.manager import manager as ws_manager
@@ -514,6 +515,13 @@ def admin_update_status(
             "previous": previous,
             "preview": nota_clean[:120] if nota_clean else None,
         },
+    )
+    # Email best-effort (R6) — solo si el cliente tiene email.
+    send_ticket_updated(
+        ticket.user,
+        ticket_number=ticket.ticket_number,
+        estado=payload.estado,
+        nota=nota_clean or "",
     )
     _emit_ticket_event(
         ticket,

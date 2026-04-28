@@ -6,10 +6,11 @@
  * llegarán en FASES 7-8.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { NotificationBell } from './components/NotificationBell';
 import { ProfileCompletionBanner } from './components/ProfileCompletionBanner';
+import { AdminPage } from './pages/AdminPage';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { CatalogSection } from './sections/CatalogSection';
 import { ServicesSection } from './sections/ServicesSection';
@@ -39,12 +40,34 @@ function AppShell(): JSX.Element {
   const [, setShowLogin] = useState(false);
   const [forceOnboarding, setForceOnboarding] = useState(false);
 
+  // Hash-based routing minimal: #admin abre el panel; cualquier otro hash
+  // o vacío deja la landing. Suficiente hasta que entre react-router.
+  const [route, setRoute] = useState<string>(
+    typeof window !== 'undefined' ? window.location.hash.replace('#', '') : '',
+  );
+  useEffect(() => {
+    const onHash = (): void => setRoute(window.location.hash.replace('#', ''));
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
   // Forzar onboarding si está autenticado y le falta lo básico
   // (account_type / nombre / phone). Banner sutil cubre el resto.
   const needsOnboarding =
     authStatus === 'authenticated' &&
     user !== null &&
     !user.has_completed_onboarding;
+
+  // Ruta admin: AdminPage maneja su propia protección (404 si !is_admin).
+  if (route === 'admin') {
+    return (
+      <AdminPage
+        onExit={() => {
+          window.location.hash = '';
+        }}
+      />
+    );
+  }
 
   if (needsOnboarding || forceOnboarding) {
     return (
@@ -64,7 +87,15 @@ function AppShell(): JSX.Element {
             <a href="#catalogo" className="hover:text-white">Catálogo</a>
             <a href="#contacto" className="hover:text-white">Contacto</a>
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {user?.is_admin && (
+              <a
+                href="#admin"
+                className="text-xs uppercase tracking-wider text-tundra-gold hover:text-yellow-300 border border-tundra-gold/40 rounded px-2.5 py-1"
+              >
+                Admin
+              </a>
+            )}
             <NotificationBell />
           </div>
         </div>

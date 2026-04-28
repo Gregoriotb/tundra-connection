@@ -247,12 +247,33 @@ interface CatalogListResponse {
   total: number;
 }
 
+export interface CatalogItemCreateBody {
+  name: string;
+  description?: string | null;
+  tipo: 'router' | 'camara' | 'equipo_red' | 'accesorio';
+  price: string;
+  stock: number;
+  image_url?: string | null;
+  is_active?: boolean;
+}
+
+export type CatalogItemUpdateBody = Partial<CatalogItemCreateBody>;
+
 export const catalogApi = {
   list(): Promise<CatalogListResponse> {
     return get<CatalogListResponse>('/catalog');
   },
   getById(id: string): Promise<CatalogItem> {
     return get<CatalogItem>(`/catalog/${id}`);
+  },
+  adminCreate(body: CatalogItemCreateBody): Promise<CatalogItem> {
+    return post<CatalogItemCreateBody, CatalogItem>('/admin/catalog', body);
+  },
+  adminUpdate(id: string, body: CatalogItemUpdateBody): Promise<CatalogItem> {
+    return put<CatalogItemUpdateBody, CatalogItem>(`/admin/catalog/${id}`, body);
+  },
+  async adminDelete(id: string): Promise<void> {
+    await api.delete(`/admin/catalog/${id}`);
   },
 };
 
@@ -314,6 +335,13 @@ interface InvoiceListResponse {
   total: number;
 }
 
+export type InvoiceEstado = Invoice['estado'];
+
+export interface InvoiceUpdateStatusBody {
+  estado: InvoiceEstado;
+  nota?: string | null;
+}
+
 export const invoicesApi = {
   checkout(body: CheckoutBody): Promise<Invoice> {
     return post<CheckoutBody, Invoice>('/invoices/checkout', body);
@@ -323,6 +351,23 @@ export const invoicesApi = {
   },
   getById(id: string): Promise<Invoice> {
     return get<Invoice>(`/invoices/${id}`);
+  },
+  adminList(filters?: {
+    estado?: InvoiceEstado;
+    tipo?: Invoice['tipo'];
+    user_id?: string;
+  }): Promise<InvoiceListResponse> {
+    const params = new URLSearchParams();
+    if (filters?.estado) params.set('estado', filters.estado);
+    if (filters?.tipo) params.set('tipo', filters.tipo);
+    if (filters?.user_id) params.set('user_id', filters.user_id);
+    const qs = params.toString();
+    return get<InvoiceListResponse>(`/admin/invoices${qs ? `?${qs}` : ''}`);
+  },
+  adminUpdateStatus(id: string, body: InvoiceUpdateStatusBody): Promise<Invoice> {
+    return api
+      .patch<Invoice>(`/admin/invoices/${id}/status`, body)
+      .then((r) => r.data);
   },
 };
 
@@ -397,7 +442,25 @@ export const chatApi = {
       body,
     );
   },
+  adminListThreads(estado?: QuotationThread['estado']): Promise<ThreadListResponse> {
+    const qs = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+    return get<ThreadListResponse>(`/admin/threads${qs}`);
+  },
+  adminUpdateStatus(
+    id: string,
+    body: ThreadUpdateStatusBody,
+  ): Promise<QuotationThread> {
+    return api
+      .patch<QuotationThread>(`/admin/threads/${id}/status`, body)
+      .then((r) => r.data);
+  },
 };
+
+export interface ThreadUpdateStatusBody {
+  estado: QuotationThread['estado'];
+  presupuesto_estimado?: string | null;
+  nota?: string | null;
+}
 
 // ─── Notifications ────────────────────────────────────────────────────────
 
@@ -600,5 +663,136 @@ export const ticketsApi = {
       `/admin/support-tickets/${id}/internal-note`,
       body,
     );
+  },
+};
+
+// ─── Admin (FASE 8) ───────────────────────────────────────────────────────
+
+export interface StatsCard {
+  key: string;
+  label: string;
+  value: number | string;
+  delta_pct: number | null;
+  tone: 'neutral' | 'good' | 'warn' | 'danger';
+}
+
+export interface AdminStats {
+  cards: StatsCard[];
+  generated_at: string;
+}
+
+export interface AdminExportAll {
+  generated_at: string;
+  counts: Record<string, number>;
+  invoices_total_amount: string;
+  open_tickets: number;
+  pending_quotations: number;
+  active_api_keys: number;
+}
+
+export type ApiKeyScope = 'read' | 'write' | 'admin';
+
+export interface ApiKeyItem {
+  id: string;
+  user_id: string;
+  name: string;
+  scopes: string[];
+  last_used_at: string | null;
+  expires_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  is_usable: boolean;
+}
+
+export interface ApiKeyListResponse {
+  items: ApiKeyItem[];
+  total: number;
+}
+
+export interface ApiKeyCreateBody {
+  name: string;
+  user_id?: string;
+  scopes?: ApiKeyScope[];
+  expires_at?: string | null;
+}
+
+export interface ApiKeyCreatedResponse {
+  api_key: ApiKeyItem;
+  plain_key: string;
+}
+
+// ─── Grafana (FASE 9) ─────────────────────────────────────────────────────
+
+export interface GrafanaDashboard {
+  id: string;
+  name: string;
+  uid: string;
+  url_embed: string;
+  variables: Record<string, unknown>;
+  is_active: boolean;
+  display_order: number;
+  created_at: string;
+}
+
+export interface GrafanaDashboardListResponse {
+  items: GrafanaDashboard[];
+  total: number;
+}
+
+export interface GrafanaDashboardCreateBody {
+  name: string;
+  uid: string;
+  url_embed: string;
+  variables?: Record<string, unknown>;
+  is_active?: boolean;
+  display_order?: number;
+}
+
+export type GrafanaDashboardUpdateBody = Partial<
+  Omit<GrafanaDashboardCreateBody, 'uid'>
+>;
+
+export const grafanaApi = {
+  list(includeInactive = false): Promise<GrafanaDashboardListResponse> {
+    return get<GrafanaDashboardListResponse>(
+      `/admin/grafana${includeInactive ? '?include_inactive=true' : ''}`,
+    );
+  },
+  create(body: GrafanaDashboardCreateBody): Promise<GrafanaDashboard> {
+    return post<GrafanaDashboardCreateBody, GrafanaDashboard>(
+      '/admin/grafana',
+      body,
+    );
+  },
+  update(
+    id: string,
+    body: GrafanaDashboardUpdateBody,
+  ): Promise<GrafanaDashboard> {
+    return api
+      .patch<GrafanaDashboard>(`/admin/grafana/${id}`, body)
+      .then((r) => r.data);
+  },
+  async remove(id: string): Promise<void> {
+    await api.delete(`/admin/grafana/${id}`);
+  },
+};
+
+export const adminApi = {
+  stats(): Promise<AdminStats> {
+    return get<AdminStats>('/admin/stats');
+  },
+  exportAll(): Promise<AdminExportAll> {
+    return get<AdminExportAll>('/admin/export-all');
+  },
+  listApiKeys(includeRevoked = false): Promise<ApiKeyListResponse> {
+    return get<ApiKeyListResponse>(
+      `/admin/api-keys${includeRevoked ? '?include_revoked=true' : ''}`,
+    );
+  },
+  createApiKey(body: ApiKeyCreateBody): Promise<ApiKeyCreatedResponse> {
+    return post<ApiKeyCreateBody, ApiKeyCreatedResponse>('/admin/api-keys', body);
+  },
+  async revokeApiKey(id: string): Promise<void> {
+    await api.delete(`/admin/api-keys/${id}`);
   },
 };

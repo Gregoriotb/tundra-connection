@@ -35,6 +35,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.user import User
+from app.services.email_service import send_welcome
 from app.schemas.user import (
     ADMIN_IDENTIFIER,
     AuthTokensOut,
@@ -143,6 +144,8 @@ def register(
         email_norm,
         _client_ip(request),
     )
+    # Welcome email best-effort (R6) — no rompe el flujo si el provider falla.
+    send_welcome(user)
     return _build_tokens(user)
 
 

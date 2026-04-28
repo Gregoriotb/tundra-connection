@@ -40,6 +40,7 @@ NOTIFICATION_TIPOS: tuple[str, ...] = (
     "chat_message",
     "quotation_status",
     "invoice_created",
+    "invoice_status_change",
     "ticket_updated",
     "ticket_assigned",
 )

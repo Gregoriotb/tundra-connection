@@ -42,6 +42,7 @@ from app.schemas.chat import (
     ThreadOut,
     ThreadUpdateStatusIn,
 )
+from app.services.email_service import send_new_chat_message
 from app.services.notification_service import emit_thread_event, notify
 from app.utils.sanitize import sanitize_user_text
 
@@ -281,6 +282,8 @@ def post_message(
             },
             commit=True,
         )
+        # Email best-effort (R6) — solo admin → cliente.
+        send_new_chat_message(thread.user, preview=content_clean)
 
     logger.info(
         "chat.message.create user_id=%s thread_id=%s message_id=%s",
