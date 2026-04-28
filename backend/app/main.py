@@ -22,6 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1 import auth as auth_router
+from app.api.v1 import catalog as catalog_router
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging_config import configure_logging
@@ -115,3 +116,9 @@ async def health() -> dict[str, str]:
 
 # ── Routers v1 (R17: prefijos sin "/" final) ─────────────────────────────────
 app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
+app.include_router(catalog_router.public_router, prefix="/catalog", tags=["catalog"])
+app.include_router(
+    catalog_router.admin_router,
+    prefix="/admin/catalog",
+    tags=["catalog-admin"],
+)

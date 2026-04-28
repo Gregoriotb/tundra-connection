@@ -20,6 +20,7 @@ import axios, {
   InternalAxiosRequestConfig,
 } from 'axios';
 
+import type { CatalogItem } from '../components/CatalogCard';
 import type {
   ApiErrorResponse,
   AuthTokens,
@@ -207,5 +208,21 @@ export const usersApi = {
   },
   updateProfile(payload: UserUpdatePayload): Promise<User> {
     return put<UserUpdatePayload, User>('/users/profile', payload);
+  },
+};
+
+// ─── Catalog ──────────────────────────────────────────────────────────────
+
+interface CatalogListResponse {
+  items: CatalogItem[];
+  total: number;
+}
+
+export const catalogApi = {
+  list(): Promise<CatalogListResponse> {
+    return get<CatalogListResponse>('/catalog');
+  },
+  getById(id: string): Promise<CatalogItem> {
+    return get<CatalogItem>(`/catalog/${id}`);
   },
 };
