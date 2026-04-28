@@ -2,7 +2,6 @@
 
 from app.models.api_key import API_KEY_VALID_SCOPES, ApiKey
 from app.models.catalog_item import CATALOG_TIPOS, CatalogItem
-from app.models.grafana_dashboard import GrafanaDashboard
 from app.models.chat_message import CHAT_MESSAGE_TYPES, ChatMessage
 from app.models.invoice import INVOICE_ESTADOS, INVOICE_TIPOS, Invoice
 from app.models.notification import NOTIFICATION_TIPOS, Notification
@@ -40,5 +39,4 @@ __all__ = [
     "TICKET_PRIORIDADES",
     "ApiKey",
     "API_KEY_VALID_SCOPES",
-    "GrafanaDashboard",
 ]

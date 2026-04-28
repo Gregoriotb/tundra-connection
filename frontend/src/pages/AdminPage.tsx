@@ -4,21 +4,19 @@
  * Spec:
  * - Orquestor.md §FASE 8 + mapa endpoints §Admin
  * - Protección de ruta: redirect si !user.is_admin (R4 — sin leak)
- * - 6 tabs lazy-loaded para no inflar bundle inicial
+ * - 5 tabs lazy-loaded para no inflar bundle inicial
  * - KPI cards en el header (GET /admin/stats)
  *
  * Tabs:
- *   1. Monitoreo   → AdminMonitoringTab (placeholder hasta FASE 9 / Grafana)
- *   2. Cotizaciones → AdminQuotationsTab
- *   3. Catálogo    → AdminCatalogTab
- *   4. Facturas    → AdminInvoicesTab
- *   5. Soporte     → reusa SupportTicketsPage en modo admin
- *   6. API Keys    → AdminApiKeysTab
+ *   1. Cotizaciones → AdminQuotationsTab
+ *   2. Catálogo    → AdminCatalogTab
+ *   3. Facturas    → AdminInvoicesTab
+ *   4. Soporte     → TicketKanban
+ *   5. API Keys    → AdminApiKeysTab
  */
 
 import { lazy, Suspense, useEffect, useState } from 'react';
 import {
-  Activity,
   FileText,
   KeyRound,
   LayoutDashboard,
@@ -31,11 +29,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { adminApi, type AdminStats, type StatsCard } from '../services/api';
 
 // Lazy-load de tabs — cada uno se descarga solo si el admin lo abre.
-const AdminMonitoringTab = lazy(() =>
-  import('../components/admin/AdminMonitoringTab').then((m) => ({
-    default: m.AdminMonitoringTab,
-  })),
-);
 const AdminQuotationsTab = lazy(() =>
   import('../components/admin/AdminQuotationsTab').then((m) => ({
     default: m.AdminQuotationsTab,
@@ -64,7 +57,6 @@ const TicketKanban = lazy(() =>
 );
 
 type TabKey =
-  | 'monitoring'
   | 'quotations'
   | 'catalog'
   | 'invoices'
@@ -74,11 +66,10 @@ type TabKey =
 interface TabDef {
   key: TabKey;
   label: string;
-  icon: typeof Activity;
+  icon: typeof FileText;
 }
 
 const TABS: TabDef[] = [
-  { key: 'monitoring', label: 'Monitoreo', icon: Activity },
   { key: 'quotations', label: 'Cotizaciones', icon: MessagesSquare },
   { key: 'catalog', label: 'Catálogo', icon: Package },
   { key: 'invoices', label: 'Facturas', icon: FileText },
@@ -92,7 +83,7 @@ interface AdminPageProps {
 
 export function AdminPage({ onExit }: AdminPageProps): JSX.Element {
   const { user, status } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabKey>('monitoring');
+  const [activeTab, setActiveTab] = useState<TabKey>('quotations');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [statsError, setStatsError] = useState<string | null>(null);
 
@@ -220,7 +211,6 @@ export function AdminPage({ onExit }: AdminPageProps): JSX.Element {
       {/* ── Tab content ──────────────────────────────────────────────── */}
       <main className="max-w-7xl mx-auto px-6 py-8">
         <Suspense fallback={<TabSpinner />}>
-          {activeTab === 'monitoring' && <AdminMonitoringTab />}
           {activeTab === 'quotations' && <AdminQuotationsTab />}
           {activeTab === 'catalog' && <AdminCatalogTab />}
           {activeTab === 'invoices' && <AdminInvoicesTab />}

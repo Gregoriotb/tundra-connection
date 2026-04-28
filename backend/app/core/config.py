@@ -50,10 +50,6 @@ class Settings(BaseSettings):
     UPLOAD_LOCAL_DIR: str = "/app/uploads"
     UPLOAD_MAX_SIZE_MB: int = 10
 
-    # ── Grafana (FASE 9) ────────────────────────────────────────────────────
-    GRAFANA_URL: str = ""
-    GRAFANA_SERVICE_ACCOUNT_TOKEN: str = ""
-
     # ── Email / Resend (FASE 10) ────────────────────────────────────────────
     RESEND_API_KEY: str = ""
     EMAIL_FROM: str = "noreply@tundraconnection.com"

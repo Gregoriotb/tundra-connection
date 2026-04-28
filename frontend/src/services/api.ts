@@ -721,62 +721,6 @@ export interface ApiKeyCreatedResponse {
   plain_key: string;
 }
 
-// ─── Grafana (FASE 9) ─────────────────────────────────────────────────────
-
-export interface GrafanaDashboard {
-  id: string;
-  name: string;
-  uid: string;
-  url_embed: string;
-  variables: Record<string, unknown>;
-  is_active: boolean;
-  display_order: number;
-  created_at: string;
-}
-
-export interface GrafanaDashboardListResponse {
-  items: GrafanaDashboard[];
-  total: number;
-}
-
-export interface GrafanaDashboardCreateBody {
-  name: string;
-  uid: string;
-  url_embed: string;
-  variables?: Record<string, unknown>;
-  is_active?: boolean;
-  display_order?: number;
-}
-
-export type GrafanaDashboardUpdateBody = Partial<
-  Omit<GrafanaDashboardCreateBody, 'uid'>
->;
-
-export const grafanaApi = {
-  list(includeInactive = false): Promise<GrafanaDashboardListResponse> {
-    return get<GrafanaDashboardListResponse>(
-      `/admin/grafana${includeInactive ? '?include_inactive=true' : ''}`,
-    );
-  },
-  create(body: GrafanaDashboardCreateBody): Promise<GrafanaDashboard> {
-    return post<GrafanaDashboardCreateBody, GrafanaDashboard>(
-      '/admin/grafana',
-      body,
-    );
-  },
-  update(
-    id: string,
-    body: GrafanaDashboardUpdateBody,
-  ): Promise<GrafanaDashboard> {
-    return api
-      .patch<GrafanaDashboard>(`/admin/grafana/${id}`, body)
-      .then((r) => r.data);
-  },
-  async remove(id: string): Promise<void> {
-    await api.delete(`/admin/grafana/${id}`);
-  },
-};
-
 export const adminApi = {
   stats(): Promise<AdminStats> {
     return get<AdminStats>('/admin/stats');
