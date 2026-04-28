@@ -532,3 +532,49 @@ Lista consolidada para FASE 11:
 - **2026-04-28** — FASE 8 completa (12 archivos): modelo `ApiKey` con scopes JSONB y `is_usable` property, schemas `ApiKey*Out / ExportAllOut / AdminStatsOut`, router `/admin/api-keys` (POST con `plain_key` one-time, GET con filtro `include_revoked`, DELETE soft), router `/admin` (`export-all` agregado + `stats` con 5 KPI cards de tone dinámico), migración `0008_api_keys` con partial index `ix_api_keys_active_lookup ON api_keys(key_hash) WHERE is_active=TRUE` para hot path del middleware. Frontend: `AdminPage` con 6 tabs lazy-loaded + protección 404-style (R4) + KPI cards, `AdminCatalogTab` (CRUD con tope 10 + soft delete), `AdminInvoicesTab` (filtros estado/tipo + modal cambio de estado con `extra_data.status_history`), `AdminQuotationsTab` (vista admin de threads con `unread_count`), `AdminApiKeysTab` (modal one-time con borde dorado + checkbox confirmación obligatorio), `AdminMonitoringTab` (snapshot agregado + placeholder Grafana FASE 9). Wiring: hash-routing `#admin` en `App.tsx` con botón Admin condicional `user?.is_admin`. Backend nuevo: `admin_router` en `invoices.py` con auditoría en `extra_data.status_history` + notify automático al cliente, tipo `invoice_status_change` añadido a `NOTIFICATION_TIPOS`.
 - **2026-04-28** — FASE 9 entregada en MODO MAQUETA (5 archivos): modelo `GrafanaDashboard` con `uid` único + `display_order`, schemas Pydantic con `HttpUrl` y validación de UID alfanumérico, router `/admin/grafana` con CRUD completo + endpoint `/admin/grafana/{id}/proxy` que retorna 501 explícito (TODO marcado para sweep FASE 11 con httpx + `GRAFANA_URL`/`GRAFANA_SERVICE_ACCOUNT_TOKEN` self-hosted), migración `0009_grafana_dashboards` con partial index `(display_order, created_at) WHERE is_active=TRUE`. Frontend: `GrafanaEmbed` con iframe sandboxed (`allow-scripts allow-same-origin allow-popups allow-forms`, sin top-navigation), `referrerPolicy="no-referrer"`, `loading="lazy"`, error overlay con guía CSP/X-Frame-Options. `MonitoringView` con CRUD admin + lista ordenada por display_order + empty state instructivo. Reemplaza el placeholder de `AdminMonitoringTab`. Decisión persistida: Grafana es **self-hosted** (no Grafana Cloud) → memoria `project_grafana.md` documenta el cambio.
 - **2026-04-28** — FASE 10 entregada en MODO MAQUETA (2 archivos): `email_service.py` provider-agnostic con interface `send_email(to, template, context)` + 4 helpers tipados (`send_welcome / send_invoice_created / send_ticket_updated / send_new_chat_message`), 4 templates HTML+text inline con `format_map` + `_SafeDict` (no rompe si falta var). **Best-effort R6**: nunca lanza, devuelve bool. **Outbox local** en `uploads/_emails_outbox/<ts>_<template>_<uuid>.json` para QA sin provider. Hooks en endpoints existentes: `auth.register` (welcome), `invoices.checkout` (invoice_created), `support_tickets.admin_update_status` (ticket_updated, usa `ticket.user` relationship), `chat_quotations.post_message` (new_chat_message, gate admin→cliente solamente). Provider final por decidir en FASE 11 — el bloque TODO en `send_email()` es el único punto a tocar (Resend/SES/SMTP, los call-sites no cambian).
+- **2026-04-28** — FASE 11 EN PROGRESO. Branch `feature/fase-11-deploy` creado. Bloque A (preparación local) parcialmente completo: `Dockerfile` refactorizado a multi-stage production-ready (builder + runtime, non-root user `tundra` uid 1000, alembic upgrade head antes de uvicorn, healthcheck profundo, respeta `$PORT` de Railway), endpoint `GET /healthz` con DB ping (devuelve 503 si la BD está caída — Railway puede usarlo), `backend/.env.example` documentado con TODAS las variables agrupadas por categoría + comentarios de cómo obtener cada credencial, `frontend/.env.example` con `VITE_API_URL`.
+
+---
+
+## 🔖 PUNTO DE RETOMA — FASE 11 (continuar desde aquí)
+
+**Estado al 2026-04-28 1:08pm GMT-4:**
+
+### Branch activo
+`feature/fase-11-deploy` (basado en `feature/fase-8-admin-panel` que tiene el merge de FASES 8/9/10 en commit `b1f5658`).
+
+### Plan FASE 11 — checklist
+**Bloque A — Preparación local (sin credenciales)**
+- [x] A1. Commit + push de FASES 8/9/10 — `b1f5658`
+- [x] A2. `Dockerfile` production-ready (multi-stage, non-root, alembic startup)
+- [x] A3. Endpoint `/healthz` con DB ping
+- [x] A4. `.env.example` backend + frontend documentados
+- [ ] **A5. NEXT: `docker-compose.prod.yml`** — para test local del Dockerfile prod-mode
+- [ ] A6. `frontend/vercel.json` con rewrites + headers
+- [ ] A7. Smoke test local: `docker compose -f docker-compose.prod.yml up` → register/login/landing
+
+**Bloque B — Deploy infraestructura (requiere credenciales del usuario)**
+- [ ] B1. Neon: crear proyecto + DB → guardar `DATABASE_URL` con `?sslmode=require`
+- [ ] B2. Railway: conectar repo → root dir `backend/` → setear todas las env vars del `.env.example` → primer deploy
+- [ ] B3. Vercel: conectar repo → root dir `frontend/` → setear `VITE_API_URL=<railway-url>` → primer deploy
+- [ ] B4. CORS: actualizar `FRONTEND_URL` en Railway con el dominio Vercel
+- [ ] B5. Smoke test prod: register/login/catalog/checkout/chat
+
+**Bloque C — Sweep integraciones reales**
+- [ ] C1. Logo real (cuando lo tengas — reemplazar texto del header en `App.tsx`)
+- [ ] C2. Google OAuth real (descomentar exchange en `auth.py:google_callback`)
+- [ ] C3. ImgBB real (descomentar bloque httpx en `upload_service._upload_to_imgbb`)
+- [ ] C4. `python-magic` (añadir a `requirements.txt` + swap del magic bytes manual)
+- [ ] C5. Grafana self-hosted (deploy instancia + impl proxy real en `grafana.proxy_dashboard`)
+- [ ] C6. Email provider (decidir Resend/SES/SMTP + impl en `email_service.send_email`)
+
+### Para retomar
+1. `git checkout feature/fase-11-deploy`
+2. Leer **A5** arriba — siguiente archivo a crear es `docker-compose.prod.yml`
+3. Decir a Claude: *"Continúa FASE 11 desde paso A5"*
+
+### Archivos clave de FASE 11 ya entregados
+- [Dockerfile](backend/Dockerfile)
+- [main.py:/healthz](backend/app/main.py)
+- [backend/.env.example](backend/.env.example)
+- [frontend/.env.example](frontend/.env.example)

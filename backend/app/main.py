@@ -128,10 +128,38 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-# ── Health check ─────────────────────────────────────────────────────────────
+# ── Health checks ────────────────────────────────────────────────────────────
+# /health  — liveness: el proceso responde. No toca BD.
+# /healthz — readiness: verifica conexión a DB. Lo usa Railway para
+#            decidir si tumba el contenedor.
+
+
 @app.get("/health", tags=["meta"])
 async def health() -> dict[str, str]:
     return {"status": "ok", "service": "tundra-connection", "version": "1.0.0"}
+
+
+@app.get("/healthz", tags=["meta"])
+def healthz() -> dict[str, str]:
+    """Readiness: ping a la BD. Si falla, devuelve 503 explícito."""
+    from sqlalchemy import text
+
+    from app.core.database import SessionLocal
+
+    db_ok = False
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:  # pragma: no cover
+        logger.warning("healthz.db_failed err=%s", exc)
+
+    if not db_ok:
+        return JSONResponse(  # type: ignore[return-value]
+            status_code=503,
+            content={"status": "degraded", "db": "down"},
+        )
+    return {"status": "ok", "db": "up"}
 
 
 # ── Routers v1 (R17: prefijos sin "/" final) ─────────────────────────────────
