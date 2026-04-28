@@ -38,6 +38,7 @@ from app.schemas.invoice import (
     InvoiceOut,
     ProductSaleCheckoutIn,
 )
+from app.services.notification_service import notify
 
 logger = logging.getLogger("tundra.invoices")
 router = APIRouter()
@@ -67,6 +68,20 @@ def checkout(
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Unsupported checkout type"
         )
+
+    # Notifica al cliente que su factura fue emitida (push WS).
+    notify(
+        db,
+        user_id=current_user.id,
+        tipo="invoice_created",
+        payload={
+            "invoice_id": str(invoice.id),
+            "tipo": invoice.tipo,
+            "total": str(invoice.total),
+            "preview": f"Factura por ${invoice.total} emitida correctamente.",
+        },
+        commit=True,
+    )
 
     logger.info(
         "invoices.checkout.ok user_id=%s invoice_id=%s tipo=%s total=%s",

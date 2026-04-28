@@ -42,6 +42,8 @@ from app.schemas.chat import (
     ThreadOut,
     ThreadUpdateStatusIn,
 )
+from app.services.notification_service import emit_thread_event, notify
+from app.utils.sanitize import sanitize_user_text
 
 logger = logging.getLogger("tundra.chat")
 
@@ -144,11 +146,12 @@ def create_thread(
             f"Quotation chat is only available for '{QUOTE_SERVICE_SLUG}'",
         )
 
+    requerimiento_clean = sanitize_user_text(payload.requerimiento_inicial)
     thread = QuotationThread(
         user_id=current_user.id,
         service_id=service.id,
         estado="pending",
-        requerimiento_inicial=payload.requerimiento_inicial,
+        requerimiento_inicial=requerimiento_clean,
         direccion=payload.direccion,
         presupuesto_estimado=payload.presupuesto_estimado,
     )
@@ -160,7 +163,7 @@ def create_thread(
     initial_msg = ChatMessage(
         thread_id=thread.id,
         user_id=current_user.id,
-        content=payload.requerimiento_inicial,
+        content=requerimiento_clean,
         message_type="text",
     )
     db.add(initial_msg)
@@ -241,10 +244,11 @@ def post_message(
             f"Thread is {thread.estado}; cannot post messages",
         )
 
+    content_clean = sanitize_user_text(payload.content)
     msg = ChatMessage(
         thread_id=thread.id,
         user_id=current_user.id,
-        content=payload.content,
+        content=content_clean,
         message_type="text",
     )
     db.add(msg)
@@ -252,6 +256,31 @@ def post_message(
     thread.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(msg)
+
+    # Push WS a los suscriptores del thread (excluye al emisor — su
+    # cliente ya hizo append optimista).
+    msg_serialized = MessageOut.model_validate(msg).model_dump(mode="json")
+    emit_thread_event(
+        thread_id=thread.id,
+        type="chat_message",
+        payload=msg_serialized,
+        exclude_user_id=current_user.id,
+    )
+
+    # Notificación a la contraparte (si el emisor es el cliente, notifica
+    # a admins; si es admin, notifica al dueño del hilo).
+    if current_user.is_admin and thread.user_id != current_user.id:
+        notify(
+            db,
+            user_id=thread.user_id,
+            tipo="chat_message",
+            payload={
+                "thread_id": str(thread.id),
+                "message_id": str(msg.id),
+                "preview": content_clean[:120],
+            },
+            commit=True,
+        )
 
     logger.info(
         "chat.message.create user_id=%s thread_id=%s message_id=%s",
@@ -308,7 +337,7 @@ def post_attachment(
     msg = ChatMessage(
         thread_id=thread.id,
         user_id=current_user.id,
-        content=note or "Archivo adjunto",
+        content=sanitize_user_text(note or "Archivo adjunto", max_length=500),
         message_type="attachment",
         attachments=snapshot,
     )
@@ -316,6 +345,27 @@ def post_attachment(
     thread.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(msg)
+
+    # Push WS y notificación (mismo patrón que post_message).
+    msg_serialized = MessageOut.model_validate(msg).model_dump(mode="json")
+    emit_thread_event(
+        thread_id=thread.id,
+        type="chat_message",
+        payload=msg_serialized,
+        exclude_user_id=current_user.id,
+    )
+    if current_user.is_admin and thread.user_id != current_user.id:
+        notify(
+            db,
+            user_id=thread.user_id,
+            tipo="chat_message",
+            payload={
+                "thread_id": str(thread.id),
+                "message_id": str(msg.id),
+                "preview": "Adjunto recibido",
+            },
+            commit=True,
+        )
 
     logger.info(
         "chat.attachment.create user_id=%s thread_id=%s count=%s",
@@ -374,16 +424,46 @@ def update_thread_status(
 
     # System message para el timeline.
     note = payload.nota or f"Estado actualizado: {previous} → {payload.estado}"
+    note_clean = sanitize_user_text(note, max_length=500)
     sys_msg = ChatMessage(
         thread_id=thread.id,
         user_id=admin.id,
-        content=note,
+        content=note_clean,
         message_type="system",
     )
     db.add(sys_msg)
     thread.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(thread)
+
+    # Notifica al cliente del cambio + push thread_updated a suscriptores.
+    notify(
+        db,
+        user_id=thread.user_id,
+        tipo="quotation_status",
+        payload={
+            "thread_id": str(thread.id),
+            "estado": payload.estado,
+            "previous": previous,
+            "preview": note_clean[:120],
+        },
+        commit=True,
+    )
+    sys_serialized = MessageOut.model_validate(sys_msg).model_dump(mode="json")
+    emit_thread_event(
+        thread_id=thread.id,
+        type="chat_message",
+        payload=sys_serialized,
+    )
+    emit_thread_event(
+        thread_id=thread.id,
+        type="thread_updated",
+        payload={
+            "thread_id": str(thread.id),
+            "estado": payload.estado,
+            "previous": previous,
+        },
+    )
 
     logger.warning(
         "chat.thread.status admin_id=%s thread_id=%s %s→%s",

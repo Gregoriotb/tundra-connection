@@ -10,6 +10,7 @@ Spec: Orquestor.md §FASE 1 + SECURITY_RULES.md
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -25,10 +26,13 @@ from app.api.v1 import auth as auth_router
 from app.api.v1 import catalog as catalog_router
 from app.api.v1 import chat_quotations as chat_router
 from app.api.v1 import invoices as invoices_router
+from app.api.v1 import notifications as notifications_router
 from app.api.v1 import services as services_router
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging_config import configure_logging
+from app.websocket import handlers as ws_handlers
+from app.websocket.manager import manager as ws_manager
 
 configure_logging()
 logger = logging.getLogger("tundra.app")
@@ -42,8 +46,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings.ENVIRONMENT,
         settings.FRONTEND_URL,
     )
-    yield
-    logger.info("tundra.shutdown")
+    # WebSocket manager lifecycle (R7).
+    ws_manager.attach_loop(asyncio.get_running_loop())
+    ws_manager.start_sweeper()
+    try:
+        yield
+    finally:
+        await ws_manager.shutdown()
+        logger.info("tundra.shutdown")
 
 
 app = FastAPI(
@@ -141,3 +151,10 @@ app.include_router(
     prefix="/admin/threads",
     tags=["chat-admin"],
 )
+app.include_router(
+    notifications_router.router,
+    prefix="/notifications",
+    tags=["notifications"],
+)
+# WebSocket endpoint (no prefix — el path completo es /ws).
+app.include_router(ws_handlers.router, tags=["websocket"])

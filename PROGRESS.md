@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza al cerrar cada fase del [Orquestor.md](SDD/Orquestor.md).
 
 **Inicio:** 2026-04-27
-**Fase actual:** FASE 5 — WebSocket + Notificaciones (pendiente de iniciar)
+**Fase actual:** FASE 6 — Reportes de Fallas (pendiente de iniciar)
 
 ---
 
@@ -15,7 +15,7 @@
 | 2 | Catálogo Mínimo + Carrito | 🟢 COMPLETA | 2026-04-27 |
 | 3 | Servicios con Overlays | 🟢 COMPLETA | 2026-04-27 |
 | 4 | Chat-Cotizaciones | 🟢 COMPLETA | 2026-04-27 |
-| 5 | WebSocket + Notificaciones | ⚪ Pendiente | — |
+| 5 | WebSocket + Notificaciones | 🟢 COMPLETA | 2026-04-27 |
 | 6 | Reportes de Fallas | ⚪ Pendiente | — |
 | 7 | OAuth Google + Onboarding | ⚪ Pendiente | — |
 | 8 | Admin Completo | ⚪ Pendiente | — |
@@ -303,6 +303,81 @@ Ninguno.
 
 ---
 
+## CHECKPOINT: TUNDRA-FASE-5-WEBSOCKET
+
+- **Estado:** COMPLETO
+- **Fecha:** 2026-04-27
+- **Branch:** `feature/fase-5-websocket-notificaciones`
+
+### Archivos creados (12 principales + modificaciones)
+
+**Backend:**
+- [`backend/app/models/notification.py`](backend/app/models/notification.py) — Modelo Notification
+- [`backend/app/schemas/notification.py`](backend/app/schemas/notification.py) — DTOs
+- [`backend/app/utils/sanitize.py`](backend/app/utils/sanitize.py) — `sanitize_user_text` + `sanitize_filename`
+- [`backend/app/websocket/connection.py`](backend/app/websocket/connection.py) — `WSConnection` (lock, touch, subscribe sets)
+- [`backend/app/websocket/manager.py`](backend/app/websocket/manager.py) — `SecureWSManager` (R7)
+- [`backend/app/websocket/handlers.py`](backend/app/websocket/handlers.py) — `/ws` endpoint + dispatcher
+- [`backend/app/api/v1/notifications.py`](backend/app/api/v1/notifications.py) — 5 endpoints
+- [`backend/alembic/versions/0006_notifications.py`](backend/alembic/versions/0006_notifications.py) — migración con partial index
+- [`backend/app/services/notification_service.py`](backend/app/services/notification_service.py) — `notify()` + `emit_thread_event()`
+
+**Frontend:**
+- [`frontend/src/contexts/WebSocketContext.tsx`](frontend/src/contexts/WebSocketContext.tsx) — Provider con backoff exponencial
+- [`frontend/src/components/NotificationBell.tsx`](frontend/src/components/NotificationBell.tsx) — Bell + dropdown + push real-time
+
+**Modificados:**
+- `backend/app/main.py` — lifespan WS manager + mount `/ws`, `/notifications`
+- `backend/app/api/v1/chat_quotations.py` — emit chat_message/thread_updated + notify + sanitize
+- `backend/app/api/v1/invoices.py` — notify invoice_created
+- `backend/app/models/__init__.py` — registra Notification
+- `frontend/src/App.tsx` — `WebSocketProvider` + `NotificationBell` en header
+- `frontend/src/components/ChatThread.tsx` — **swap polling → WS** con fallback 30s
+- `frontend/src/services/api.ts` — `notificationsApi`
+
+### Decisiones especiales
+
+- **R7 — una conexión por usuario**: si llega una segunda conexión, la primera recibe `session_replaced` y se cierra con código 4000. El cliente NO reconecta tras 4000.
+- **`emit_event_sync`** — bridge sync→async. Endpoints HTTP siguen siendo sync (compatibles con SQLA estilo 2.0); el WS vive en async. `asyncio.run_coroutine_threadsafe` programa el coro en el loop principal sin bloquear.
+- **Push WS NO transaccional** — la BD es la fuente de verdad. Si el WS falla, la notificación queda persistida y el frontend hidrata al reconectar.
+- **Subscripción WS con IDOR** — `subscribe_thread` valida ownership en BD antes de aceptar. Mismo patrón 404-no-403 del HTTP.
+- **`subscribe_ticket` stub-seguro** — solo admins hasta FASE 6 (modelo `SupportTicket` no existe). Documentado en handlers.py.
+- **Re-suscripción automática tras reconnect** — `desiredThreadsRef` y `desiredTicketsRef` re-aplicadas en `onopen`. Transparente para componentes.
+- **Partial index en `notifications`** — `(user_id, created_at DESC) WHERE read_at IS NULL` → query del bell ultra-rápida con storage mínimo.
+- **`exclude_user_id` en broadcast de chat** — el emisor del mensaje ya hizo append optimista; excluirlo evita doble-render.
+- **`sanitize_user_text`** — bloquea `<script>/<iframe>/...`, control chars, normaliza Unicode NFC, colapsa whitespace, trunca con elipsis. Sin dependencia externa.
+
+### Tests pasados (manual)
+- [ ] `alembic upgrade head` aplica `0006`.
+- [ ] `wscat -c "ws://localhost:8000/ws?token=<JWT>"` conecta; sin token → 1008.
+- [ ] Conectar dos veces con el mismo token → la primera recibe `session_replaced`.
+- [ ] `{action: "ping"}` → recibe `{type: "pong"}`.
+- [ ] `{action: "subscribe_thread", thread_id: <ajeno>}` → `error: thread_not_found`.
+- [ ] `{action: "subscribe_thread", thread_id: <propio>}` → `subscribed`.
+- [ ] Admin envía mensaje al cliente → cliente recibe push `chat_message` + notification con badge.
+- [ ] `PATCH /admin/threads/{id}/status` → cliente recibe `thread_updated` + `notification` + system message en timeline.
+- [ ] `POST /invoices/checkout` → user recibe push `notification` con tipo `invoice_created`.
+- [ ] Desconectar WS forzado → ChatThread cae a polling 30s; al reconectar, se re-suscribe automáticamente.
+- [ ] Mensaje con `<script>alert(1)</script>` → guardado como `[bloqueado]alert(1)[bloqueado]`.
+
+### Reglas aplicadas (sumadas)
+| Regla | Dónde |
+|-------|-------|
+| R7 | `SecureWSManager` con 1 conn/user, heartbeat, timeout, sweeper |
+| R10 | Polling efectivo eliminado del chat (solo fallback) |
+| R6 sanitize | `sanitize_user_text` aplicado a content/note/requerimiento |
+
+### Pendientes / TODO
+- **Adjuntos reales (ImgBB)** — endpoint stub sigue ahí (FASE 7).
+- **`subscribe_ticket` real** — espera el modelo `SupportTicket` (FASE 6).
+- **Read receipts** — `unread_count` sigue heurístico.
+- **Smoke test integral** — requiere Docker + frontend `npm install`.
+
+### Siguiente fase
+**FASE 6 — Reportes de Fallas (Alloy-style).** Modelo `SupportTicket`, endpoints, UI con creación + lista + detalle + admin Kanban. Activa el `subscribe_ticket` que está stub. Tickets emiten WS para admins (broadcast).
+
+---
+
 ## Bitácora
 
 - **2026-04-27** — Inicio FASE 1. Memoria + `PROGRESS.md` creados. Repo público en GitHub: <https://github.com/Gregoriotb/tundra-connection>. Branches `main` (protegida), `develop`, `feature/fase-1-fundacion-auth`.
@@ -310,3 +385,4 @@ Ninguno.
 - **2026-04-27** — FASE 2 completa: catálogo público + admin CRUD, CartContext con aritmética entera, CatalogSection con 4 estados. Logo placeholder pendiente de reemplazo cuando el cliente lo provea.
 - **2026-04-27** — FASE 3 completa: modelos `Service` + `Invoice`, endpoints `/services`, `/invoices/checkout` con discriminated union (PRODUCT_SALE + INTERNET_SERVICE) y lock pesimista de stock, seed de los 3 servicios con planes, `ServiceCard` + `ServiceOverlay` (Framer Motion stagger) + `InternetPlanModal`. Bonus: scaffold del frontend (package.json, vite, tsconfig, tailwind), `App.tsx`, `ServicesSection.tsx`. Pendiente: smoke test + `npm install`.
 - **2026-04-27** — FASE 4 completa: modelos `QuotationThread` + `ChatMessage`, endpoints `/chat-quotations` (cliente) + `/admin/threads` (admin), `ChatMessage` (3 estilos), `ChatThread` con polling 5s + append optimista, `QuotationsPage` 2-col responsive. Polling marcado como deuda explícita — swap a WebSocket en FASE 5 con refactor mínimo (`setDetail` es punto único de mutación).
+- **2026-04-27** — FASE 5 completa: `SecureWSManager` (R7 — 1 conn/user, heartbeat 30s, timeout 120s, sweeper background), endpoint `/ws?token=` con auth JWT y dispatcher de actions (subscribe_thread con IDOR check), modelo `Notification` + endpoints CRUD, `notification_service.notify()` que crea fila + emite WS best-effort, `WebSocketContext` con backoff exponencial + re-suscripción tras reconnect, `NotificationBell` con push tiempo real + mark-read optimista, **deuda del polling pagada**: ChatThread ahora usa WS push + polling fallback solo si WS caído (30s). `sanitize_user_text` aplicado en chat (con sanitización de `<script>`/`<iframe>`/control chars).

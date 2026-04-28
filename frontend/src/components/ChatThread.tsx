@@ -26,6 +26,7 @@ import {
 } from 'react';
 
 import { useAuth } from '../contexts/AuthContext';
+import { useWebSocket } from '../contexts/WebSocketContext';
 import { ApiError, chatApi, type QuotationThreadDetail } from '../services/api';
 import type { UUID } from '../types';
 import { ChatMessage, type ChatMessageData } from './ChatMessage';
@@ -34,10 +35,12 @@ import { ChatMessage, type ChatMessageData } from './ChatMessage';
 
 interface ChatThreadProps {
   threadId: UUID;
-  pollIntervalMs?: number;   // default 5_000
+  /** Si > 0, fuerza polling adicional (debug). Default: solo polling
+   *  fallback cuando el WS NO está abierto. */
+  pollIntervalMs?: number;
 }
 
-const POLL_DEFAULT = 5_000;
+const POLL_FALLBACK_MS = 30_000;  // cuando WS está caído (R10: WS reemplaza polling)
 const MAX_INPUT = 4000;
 const TERMINAL_STATES = new Set(['closed', 'cancelled']);
 const ESTADO_LABEL: Record<string, string> = {
@@ -53,9 +56,15 @@ const ESTADO_LABEL: Record<string, string> = {
 
 export function ChatThread({
   threadId,
-  pollIntervalMs = POLL_DEFAULT,
+  pollIntervalMs,
 }: ChatThreadProps): JSX.Element {
   const { user } = useAuth();
+  const {
+    status: wsStatus,
+    subscribe,
+    subscribeThread,
+    unsubscribeThread,
+  } = useWebSocket();
   const [detail, setDetail] = useState<QuotationThreadDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
@@ -103,14 +112,53 @@ export function ChatThread({
     void fetchThread();
   }, [fetchThread]);
 
-  // Polling.
+  // Polling fallback: solo cuando WS NO está abierto. Si el override
+  // pollIntervalMs > 0 está activo (debug) lo respetamos.
   useEffect(() => {
-    if (pollIntervalMs <= 0) return;
+    const interval =
+      pollIntervalMs && pollIntervalMs > 0
+        ? pollIntervalMs
+        : wsStatus === 'open'
+          ? 0
+          : POLL_FALLBACK_MS;
+    if (interval <= 0) return;
     const id = window.setInterval(() => {
       void fetchThread();
-    }, pollIntervalMs);
+    }, interval);
     return () => window.clearInterval(id);
-  }, [fetchThread, pollIntervalMs]);
+  }, [fetchThread, pollIntervalMs, wsStatus]);
+
+  // Subscripción WS al thread (recibe chat_message + thread_updated).
+  useEffect(() => {
+    if (wsStatus !== 'open') return;
+    subscribeThread(threadId);
+    return () => unsubscribeThread(threadId);
+  }, [threadId, wsStatus, subscribeThread, unsubscribeThread]);
+
+  // Listener: chat_message → append si es de nuestro thread.
+  useEffect(() => {
+    const cleanup = subscribe('chat_message', (payload) => {
+      const msg = payload as unknown as ChatMessageData;
+      if (!msg || typeof msg.id !== 'string' || msg.thread_id !== threadId) return;
+      setDetail((prev) => {
+        if (!prev) return prev;
+        if (prev.messages.some((m) => m.id === msg.id)) return prev;
+        return { ...prev, messages: [...prev.messages, msg] };
+      });
+    });
+    return cleanup;
+  }, [subscribe, threadId]);
+
+  // Listener: thread_updated → refresca metadatos (estado, etc.).
+  useEffect(() => {
+    const cleanup = subscribe('thread_updated', (payload) => {
+      const upd = payload as { thread_id?: string; estado?: string };
+      if (upd.thread_id !== threadId) return;
+      // Re-fetch para traer last_message_preview + presupuesto coherentes.
+      void fetchThread();
+    });
+    return cleanup;
+  }, [subscribe, threadId, fetchThread]);
 
   // Auto-scroll al fondo cuando hay mensajes nuevos.
   useEffect(() => {

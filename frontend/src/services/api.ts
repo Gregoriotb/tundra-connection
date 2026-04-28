@@ -370,3 +370,58 @@ export const chatApi = {
     );
   },
 };
+
+// ─── Notifications ────────────────────────────────────────────────────────
+
+export type NotificationTipo =
+  | 'chat_message'
+  | 'quotation_status'
+  | 'invoice_created'
+  | 'ticket_updated'
+  | 'ticket_assigned';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  tipo: NotificationTipo;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+  is_read: boolean;
+}
+
+interface NotificationListResponse {
+  items: Notification[];
+  total: number;
+}
+
+interface UnreadCountResponse {
+  unread: number;
+}
+
+export const notificationsApi = {
+  list(onlyUnread = false, limit = 50): Promise<NotificationListResponse> {
+    const params = new URLSearchParams();
+    if (onlyUnread) params.set('only_unread', 'true');
+    params.set('limit', String(limit));
+    return get<NotificationListResponse>(`/notifications?${params.toString()}`);
+  },
+  unreadCount(): Promise<UnreadCountResponse> {
+    return get<UnreadCountResponse>('/notifications/unread-count');
+  },
+  markRead(id: string): Promise<Notification> {
+    return put<Record<string, never>, Notification>(
+      `/notifications/${id}/read`,
+      {},
+    );
+  },
+  markAllRead(): Promise<UnreadCountResponse> {
+    return put<Record<string, never>, UnreadCountResponse>(
+      '/notifications/mark-all-read',
+      {},
+    );
+  },
+  remove(id: string): Promise<void> {
+    return api.delete(`/notifications/${id}`).then(() => undefined);
+  },
+};

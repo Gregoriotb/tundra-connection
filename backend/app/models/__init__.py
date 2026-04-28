@@ -3,6 +3,7 @@
 from app.models.catalog_item import CATALOG_TIPOS, CatalogItem
 from app.models.chat_message import CHAT_MESSAGE_TYPES, ChatMessage
 from app.models.invoice import INVOICE_ESTADOS, INVOICE_TIPOS, Invoice
+from app.models.notification import NOTIFICATION_TIPOS, Notification
 from app.models.quotation_thread import QUOTATION_ESTADOS, QuotationThread
 from app.models.service import SERVICE_SLUGS, Service
 from app.models.user import AccountType, User
@@ -21,4 +22,6 @@ __all__ = [
     "QUOTATION_ESTADOS",
     "ChatMessage",
     "CHAT_MESSAGE_TYPES",
+    "Notification",
+    "NOTIFICATION_TIPOS",
 ]
