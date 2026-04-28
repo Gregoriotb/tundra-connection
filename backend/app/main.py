@@ -18,6 +18,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -29,6 +30,8 @@ from app.api.v1 import invoices as invoices_router
 from app.api.v1 import notifications as notifications_router
 from app.api.v1 import services as services_router
 from app.api.v1 import support_tickets as tickets_router
+from app.api.v1 import users as users_router
+from app.services.upload_service import get_uploads_dir
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging_config import configure_logging
@@ -156,6 +159,19 @@ app.include_router(
     notifications_router.router,
     prefix="/notifications",
     tags=["notifications"],
+)
+app.include_router(
+    users_router.router,
+    prefix="/users/profile",
+    tags=["users"],
+)
+# Static files for uploaded images/docs (R6 fallback local).
+# En producción tras CDN/ImgBB esto puede deshabilitarse, pero mantenerlo
+# permite que las URLs `/uploads/...` sigan resolviendo si hay archivos.
+app.mount(
+    "/uploads",
+    StaticFiles(directory=get_uploads_dir(), check_dir=False),
+    name="uploads",
 )
 app.include_router(
     tickets_router.client_router,

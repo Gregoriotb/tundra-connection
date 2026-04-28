@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza al cerrar cada fase del [Orquestor.md](SDD/Orquestor.md).
 
 **Inicio:** 2026-04-27
-**Fase actual:** FASE 7 — OAuth Google + Onboarding (pendiente de iniciar)
+**Fase actual:** FASE 8 — Admin Completo (pendiente de iniciar)
 
 ---
 
@@ -17,7 +17,7 @@
 | 4 | Chat-Cotizaciones | 🟢 COMPLETA | 2026-04-27 |
 | 5 | WebSocket + Notificaciones | 🟢 COMPLETA | 2026-04-27 |
 | 6 | Reportes de Fallas | 🟢 COMPLETA | 2026-04-27 |
-| 7 | OAuth Google + Onboarding | ⚪ Pendiente | — |
+| 7 | OAuth Google + Onboarding | 🟡 MAQUETA | 2026-04-27 |
 | 8 | Admin Completo | ⚪ Pendiente | — |
 | 9 | Grafana Integration | ⚪ Pendiente | — |
 | 10 | Email Service | ⚪ Pendiente | — |
@@ -447,6 +447,72 @@ Ninguno.
 
 ---
 
+## CHECKPOINT: TUNDRA-FASE-7-OAUTH-MAQUETA
+
+- **Estado:** ENTREGADA EN MAQUETA
+- **Fecha:** 2026-04-27
+- **Branch:** `feature/fase-7-oauth-onboarding`
+
+### Archivos creados (7 principales + modificaciones)
+
+**Backend:**
+- [`backend/app/api/v1/auth.py`](backend/app/api/v1/auth.py) modificado — `/auth/google/login`, `/auth/google/callback`, `/auth/password`
+- [`backend/app/api/v1/users.py`](backend/app/api/v1/users.py) — `GET/PUT /users/profile`, photo-upload, rif-upload
+- [`backend/app/services/upload_service.py`](backend/app/services/upload_service.py) — magic bytes + chunks + ImgBB stub + fallback local
+
+**Frontend:**
+- [`frontend/src/pages/OnboardingPage.tsx`](frontend/src/pages/OnboardingPage.tsx) — Form completo con uploads
+- [`frontend/src/components/ProfileCompletionBanner.tsx`](frontend/src/components/ProfileCompletionBanner.tsx) — Banner sutil dismissible por sesión
+- [`frontend/src/components/UploadField.tsx`](frontend/src/components/UploadField.tsx) — Drag-drop reutilizable, 2 variantes
+
+**Modificados:**
+- `backend/app/main.py` — mount `/users/profile`, StaticFiles `/uploads`
+- `backend/requirements.txt` — añade `httpx` para ImgBB futuro
+- `frontend/src/App.tsx` — refactor en `AppShell`, rutea OnboardingPage si falta básico
+- `frontend/src/services/api.ts` — `usersApi.uploadPhoto/uploadRif`, `oauthApi.googleLoginUrl`
+
+### Decisiones especiales
+
+- **Modo maqueta explícito** — endpoints estructuralmente correctos pero sin integración a Google real ni ImgBB real. Cada stub tiene un `TODO (sweep final)` con el código exacto a descomentar/escribir.
+- **Magic bytes check** — primera línea de defensa contra MIME spoofing. `PNG`, `JPEG`, `WEBP`, `PDF` cubiertos. En sweep final se cambia a `python-magic` (libmagic) para cobertura completa.
+- **Lectura por chunks (64 KB)** — detecta archivos enormes sin cargar todo en RAM.
+- **`UploadField` desacoplado** — el componente no conoce endpoints, recibe `onUpload(file)` como prop. Reutilizable para chat, tickets, admin.
+- **`AppShell` dentro de providers** — patrón para que `useAuth()` esté disponible en el routing.
+- **Banner auto-oculto** — sessionStorage para dismiss, auto-cleanup cuando los campos se llenan.
+- **RIF document URL** — el endpoint guarda el archivo y loggea el URL, pero NO persiste un campo dedicado en `User` (el spec sólo declara `rif_cedula` como número). Si el negocio lo pide, se añade en migración (R14).
+
+### Tests pasados (manual)
+- [ ] `GET /auth/google/login` sin credenciales → `{"authorize_url": "/oauth-stub?...", "configured": "false"}`.
+- [ ] `GET /auth/google/login` con `GOOGLE_CLIENT_ID` → URL real de Google.
+- [ ] `GET /auth/google/callback?code=X` sin credenciales → 501.
+- [ ] `PUT /users/profile` con campos válidos → 200 + perfil actualizado.
+- [ ] `PUT /users/profile` con `email` o `is_admin` en el body → 422 (extra="forbid").
+- [ ] `POST /photo-upload` con JPG válido → 200, `profile_photo_url` se actualiza.
+- [ ] `POST /photo-upload` con `.exe` renombrado a `.png` → 400 "File content does not match declared type".
+- [ ] `POST /photo-upload` con archivo > 5 MB → 400.
+- [ ] Frontend: usuario sin onboarding completo → ve `OnboardingPage` forzada.
+- [ ] Frontend: usuario con perfil ok pero sin RIF → ve `ProfileCompletionBanner` dorado.
+- [ ] Frontend: drag-drop de imagen sobre `UploadField` → preview aparece tras subir.
+
+### Reglas aplicadas (sumadas)
+| Regla | Dónde |
+|-------|-------|
+| R6 | upload_service: ImgBB primero (stub) → fallback local |
+| R9 | magic bytes + size + sanitize_filename |
+| R3 | state token CSRF en Google login URL |
+
+### Pendientes / TODO (sweep final de integración)
+1. **Google OAuth real** — implementar el intercambio code→tokens en `auth.py /google/callback`. Comentado paso a paso en el código.
+2. **ImgBB real** — descomentar bloque `httpx` en `upload_service._upload_to_imgbb`. La firma ya está correcta.
+3. **`python-magic`** — swap de magic bytes manuales por libmagic completo.
+4. **Tabla / campo para `rif_document_url`** — si el negocio quiere persistir el doc subido (no solo el número).
+5. **Logo real** — sigue como texto "TUNDRA.connection" en el header.
+
+### Siguiente fase
+**FASE 8 — Admin Completo.** Página `AdminPage` con tabs (Monitoreo, Cotizaciones, Catálogo, Facturas, Soporte, API Keys), `/admin/api-keys` endpoints completos, export-all, protección de rutas admin. Activa todo lo que ya existe en backend pero aún no tiene UI.
+
+---
+
 ## Bitácora
 
 - **2026-04-27** — Inicio FASE 1. Memoria + `PROGRESS.md` creados. Repo público en GitHub: <https://github.com/Gregoriotb/tundra-connection>. Branches `main` (protegida), `develop`, `feature/fase-1-fundacion-auth`.
@@ -456,3 +522,4 @@ Ninguno.
 - **2026-04-27** — FASE 4 completa: modelos `QuotationThread` + `ChatMessage`, endpoints `/chat-quotations` (cliente) + `/admin/threads` (admin), `ChatMessage` (3 estilos), `ChatThread` con polling 5s + append optimista, `QuotationsPage` 2-col responsive. Polling marcado como deuda explícita — swap a WebSocket en FASE 5 con refactor mínimo (`setDetail` es punto único de mutación).
 - **2026-04-27** — FASE 5 completa: `SecureWSManager` (R7 — 1 conn/user, heartbeat 30s, timeout 120s, sweeper background), endpoint `/ws?token=` con auth JWT y dispatcher de actions (subscribe_thread con IDOR check), modelo `Notification` + endpoints CRUD, `notification_service.notify()` que crea fila + emite WS best-effort, `WebSocketContext` con backoff exponencial + re-suscripción tras reconnect, `NotificationBell` con push tiempo real + mark-read optimista, **deuda del polling pagada**: ChatThread ahora usa WS push + polling fallback solo si WS caído (30s). `sanitize_user_text` aplicado en chat (con sanitización de `<script>`/`<iframe>`/control chars).
 - **2026-04-27** — FASE 6 completa: modelo `SupportTicket` con `historial_estados` JSONB append-only + sequence atómica para `TICK-YYYY-NNNN`, 10 endpoints (5 cliente + 5 admin) con visibility por shape (`TicketOut` vs `TicketDetailOut`), `subscribe_ticket` real activado en handlers.py (R4 IDOR vs BD), `TicketCreator` (form 5 campos), `TicketList` (filtros + tones por estado), `TicketDetail` (timeline 4 tipos, filtra `internal_note` para clientes), `SupportTicketsPage` cliente, `TicketKanban` admin con quick-action de estado optimista. Migración `0007` con partial index sobre tickets activos.
+- **2026-04-27** — FASE 7 entregada en MODO MAQUETA: endpoints `/auth/google/login` y `/callback` con stub que detecta `GOOGLE_CLIENT_ID` y devuelve URL placeholder o real (501 explícito si callback sin credenciales). `/users/profile` GET/PUT + `/photo-upload` + `/rif-upload`. `upload_service.py` con magic bytes check (PNG/JPEG/WEBP/PDF) + lectura por chunks + ImgBB stub que retorna None hoy → fallback local guardando en `/uploads/<token>.<ext>`. `OnboardingPage` con form completo (account_type, nombre, teléfono, RIF, dirección, uploads), `ProfileCompletionBanner` dismissible auto-oculto cuando completo, `UploadField` reutilizable con drag-drop + 2 variantes (image/document) + estados discriminated. App.tsx refactor: `AppShell` dentro de providers que rutea OnboardingPage si `!has_completed_onboarding`. Pendiente sweep final: integrar Google OAuth real + ImgBB real (TODOs documentados en código).

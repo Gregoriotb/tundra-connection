@@ -210,6 +210,34 @@ export const usersApi = {
   updateProfile(payload: UserUpdatePayload): Promise<User> {
     return put<UserUpdatePayload, User>('/users/profile', payload);
   },
+  async uploadPhoto(file: File): Promise<User> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.post<User>('/users/profile/photo-upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+  async uploadRif(file: File): Promise<User> {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await api.post<User>('/users/profile/rif-upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+};
+
+export const oauthApi = {
+  googleLoginUrl(): Promise<{
+    authorize_url: string;
+    state?: string;
+    configured: string;
+  }> {
+    return get<{ authorize_url: string; state?: string; configured: string }>(
+      '/auth/google/login',
+    );
+  },
 };
 
 // ─── Catalog ──────────────────────────────────────────────────────────────
