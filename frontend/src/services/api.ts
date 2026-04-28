@@ -297,3 +297,76 @@ export const invoicesApi = {
     return get<Invoice>(`/invoices/${id}`);
   },
 };
+
+// ─── Chat-Cotizaciones ────────────────────────────────────────────────────
+
+import type { ChatMessageData } from '../components/ChatMessage';
+
+export interface QuotationThread {
+  id: string;
+  user_id: string;
+  service_id: string | null;
+  estado:
+    | 'pending'
+    | 'active'
+    | 'quoted'
+    | 'negotiating'
+    | 'closed'
+    | 'cancelled';
+  presupuesto_estimado: string | null;
+  requerimiento_inicial: string | null;
+  direccion: string | null;
+  created_at: string;
+  updated_at: string;
+  user: {
+    id: string;
+    first_name: string | null;
+    last_name: string | null;
+    profile_photo_url: string | null;
+    is_admin: boolean;
+  };
+  last_message_preview: string | null;
+  unread_count: number;
+}
+
+export interface QuotationThreadDetail extends QuotationThread {
+  messages: ChatMessageData[];
+}
+
+interface ThreadListResponse {
+  items: QuotationThread[];
+  total: number;
+}
+
+export interface CreateThreadBody {
+  service_id: string;
+  requerimiento_inicial: string;
+  direccion?: string;
+  presupuesto_estimado?: string;
+}
+
+export interface CreateMessageBody {
+  content: string;
+  message_type?: 'text';
+}
+
+export const chatApi = {
+  createThread(body: CreateThreadBody): Promise<QuotationThread> {
+    return post<CreateThreadBody, QuotationThread>(
+      '/chat-quotations/threads',
+      body,
+    );
+  },
+  myThreads(): Promise<ThreadListResponse> {
+    return get<ThreadListResponse>('/chat-quotations/my-threads');
+  },
+  getThread(id: string): Promise<QuotationThreadDetail> {
+    return get<QuotationThreadDetail>(`/chat-quotations/threads/${id}`);
+  },
+  postMessage(threadId: string, body: CreateMessageBody): Promise<ChatMessageData> {
+    return post<CreateMessageBody, ChatMessageData>(
+      `/chat-quotations/threads/${threadId}/messages`,
+      body,
+    );
+  },
+};

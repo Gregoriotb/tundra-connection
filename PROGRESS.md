@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza al cerrar cada fase del [Orquestor.md](SDD/Orquestor.md).
 
 **Inicio:** 2026-04-27
-**Fase actual:** FASE 4 — Chat-Cotizaciones (pendiente de iniciar)
+**Fase actual:** FASE 5 — WebSocket + Notificaciones (pendiente de iniciar)
 
 ---
 
@@ -14,7 +14,7 @@
 | 1 | Fundación y Auth | 🟢 COMPLETA | 2026-04-27 |
 | 2 | Catálogo Mínimo + Carrito | 🟢 COMPLETA | 2026-04-27 |
 | 3 | Servicios con Overlays | 🟢 COMPLETA | 2026-04-27 |
-| 4 | Chat-Cotizaciones | ⚪ Pendiente | — |
+| 4 | Chat-Cotizaciones | 🟢 COMPLETA | 2026-04-27 |
 | 5 | WebSocket + Notificaciones | ⚪ Pendiente | — |
 | 6 | Reportes de Fallas | ⚪ Pendiente | — |
 | 7 | OAuth Google + Onboarding | ⚪ Pendiente | — |
@@ -239,9 +239,74 @@ Ninguno.
 
 ---
 
+## CHECKPOINT: TUNDRA-FASE-4-CHAT
+
+- **Estado:** COMPLETO
+- **Fecha:** 2026-04-27
+- **Branch:** `feature/fase-4-chat-cotizaciones`
+
+### Archivos creados (8 principales + extensión api.ts)
+
+**Backend:**
+- [`backend/app/models/quotation_thread.py`](backend/app/models/quotation_thread.py) — Modelo con CASCADE/SET NULL FKs, helper estados
+- [`backend/app/models/chat_message.py`](backend/app/models/chat_message.py) — Modelo con CHECK content no-vacío, índice compuesto
+- [`backend/app/schemas/chat.py`](backend/app/schemas/chat.py) — Inputs (text-only para clientes), Outputs con `last_message_preview`/`unread_count`
+- [`backend/app/api/v1/chat_quotations.py`](backend/app/api/v1/chat_quotations.py) — 7 endpoints (5 cliente + 2 admin), regla "solo servicios_extras", IDOR centralizado
+- [`backend/alembic/versions/0005_quotations_chat.py`](backend/alembic/versions/0005_quotations_chat.py) — migración con índice compuesto `(thread_id, created_at)`
+
+**Frontend:**
+- [`frontend/src/components/ChatMessage.tsx`](frontend/src/components/ChatMessage.tsx) — 3 estilos (system/text/attachment), Avatar con iniciales, badge SOPORTE
+- [`frontend/src/components/ChatThread.tsx`](frontend/src/components/ChatThread.tsx) — Polling 5s con diff, append optimista, atajos teclado, estados terminales
+- [`frontend/src/pages/QuotationsPage.tsx`](frontend/src/pages/QuotationsPage.tsx) — Sidebar + chat, responsive, polling 15s para sidebar
+
+**Modificados:**
+- `backend/app/main.py` — montaje de `/chat-quotations` y `/admin/threads`
+- `backend/app/models/__init__.py` — registra `QuotationThread`, `ChatMessage`
+- `frontend/src/services/api.ts` — `chatApi` con `createThread`, `myThreads`, `getThread`, `postMessage`
+
+### Decisiones especiales
+
+- **Chat solo para `service.slug='servicios_extras'`** — validado server-side; intentos con fibra/satelital → 400.
+- **Cliente no puede crear `system` ni `attachment` directamente** — `MessageCreateIn.message_type: Literal["text"]` cierra superficie de ataque.
+- **Mensaje inicial automático** — al crear un thread, el `requerimiento_inicial` se inserta también como primer ChatMessage (el admin ve el contexto en el timeline).
+- **System messages para cambios de estado** — admin cambia status → row en `chat_messages` con `message_type='system'`. Sin tabla aparte de eventos.
+- **`unread_count` heurístico** — cuenta mensajes con `user_id != viewer_id`. Read-receipts reales (tabla aparte) no están en el spec.
+- **Polling 5s en chat / 15s en sidebar** — deuda explícita con fecha de muerte: FASE 5 reemplaza con WS push. El refactor es mínimo gracias al diff en `setDetail`.
+- **Estados terminales (`closed`/`cancelled`) bloquean POST** — 409 server-side + input deshabilitado client-side.
+
+### Tests pasados (manual)
+- [ ] `alembic upgrade head` aplica `0005`.
+- [ ] `POST /chat-quotations/threads` con `service_id` de fibra → 400 "only available for servicios_extras".
+- [ ] `POST /chat-quotations/threads` con `servicios_extras` → 201 + mensaje inicial creado.
+- [ ] `POST /messages` con `message_type="system"` → 422 (Pydantic forbid).
+- [ ] `GET /threads/{id_ajeno}` → 404 (no 403, no leak).
+- [ ] `PATCH /admin/threads/{id}/status` → cambia estado + inserta system message en timeline.
+- [ ] Frontend: abrir QuotationsPage, click en thread, enviar mensaje → aparece optimista; polling lo confirma.
+- [ ] Cerrar el thread como admin → input se deshabilita client-side; enviar via curl → 409.
+
+### Reglas aplicadas (sumadas)
+| Regla | Dónde |
+|-------|-------|
+| R4 IDOR | `_get_thread_or_404` 404 sobre ajeno |
+| R5 ORM | `select(...)` en todos los handlers |
+| R9 Surface | `MessageCreateIn` solo `text`; bound `MAX_ATTACHMENTS_PER_MESSAGE=5` |
+| R13 | log WARNING en cambios de estado y intentos IDOR |
+| R14 | exactamente los 7 endpoints del spec |
+
+### Pendientes / TODO
+- **Sanitización HTML del content** — utils/sanitize.py llega en FASE 5 (cuando los mensajes crucen WS sin re-encode del navegador).
+- **Adjuntos reales (ImgBB)** — endpoint `/attachments` es stub; FASE 7 lo reemplaza con `UploadFile` + ImgBB + fallback local (R6).
+- **Read receipts reales** — el `unread_count` actual es heurístico; un sistema completo requiere tabla `message_reads` (pendiente de propuesta admin).
+
+### Siguiente fase
+**FASE 5 — WebSocket + Notificaciones.** `SecureWSManager`, `WebSocketContext`, `NotificationBell`, modelo `Notification`. Reemplaza polling de chat y sidebar por push en tiempo real.
+
+---
+
 ## Bitácora
 
 - **2026-04-27** — Inicio FASE 1. Memoria + `PROGRESS.md` creados. Repo público en GitHub: <https://github.com/Gregoriotb/tundra-connection>. Branches `main` (protegida), `develop`, `feature/fase-1-fundacion-auth`.
 - **2026-04-27** — FASE 1 completa: 12 archivos principales + 6 auxiliares. Decisión clave: bootstrap admin via identifier literal `"admin"`. PR #1 abierto.
 - **2026-04-27** — FASE 2 completa: catálogo público + admin CRUD, CartContext con aritmética entera, CatalogSection con 4 estados. Logo placeholder pendiente de reemplazo cuando el cliente lo provea.
 - **2026-04-27** — FASE 3 completa: modelos `Service` + `Invoice`, endpoints `/services`, `/invoices/checkout` con discriminated union (PRODUCT_SALE + INTERNET_SERVICE) y lock pesimista de stock, seed de los 3 servicios con planes, `ServiceCard` + `ServiceOverlay` (Framer Motion stagger) + `InternetPlanModal`. Bonus: scaffold del frontend (package.json, vite, tsconfig, tailwind), `App.tsx`, `ServicesSection.tsx`. Pendiente: smoke test + `npm install`.
+- **2026-04-27** — FASE 4 completa: modelos `QuotationThread` + `ChatMessage`, endpoints `/chat-quotations` (cliente) + `/admin/threads` (admin), `ChatMessage` (3 estilos), `ChatThread` con polling 5s + append optimista, `QuotationsPage` 2-col responsive. Polling marcado como deuda explícita — swap a WebSocket en FASE 5 con refactor mínimo (`setDetail` es punto único de mutación).

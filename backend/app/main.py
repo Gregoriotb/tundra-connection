@@ -23,6 +23,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.v1 import auth as auth_router
 from app.api.v1 import catalog as catalog_router
+from app.api.v1 import chat_quotations as chat_router
 from app.api.v1 import invoices as invoices_router
 from app.api.v1 import services as services_router
 from app.core.config import settings
@@ -130,3 +131,13 @@ app.include_router(
     tags=["services"],
 )
 app.include_router(invoices_router.router, prefix="/invoices", tags=["invoices"])
+app.include_router(
+    chat_router.client_router,
+    prefix="/chat-quotations",
+    tags=["chat"],
+)
+app.include_router(
+    chat_router.admin_router,
+    prefix="/admin/threads",
+    tags=["chat-admin"],
+)
