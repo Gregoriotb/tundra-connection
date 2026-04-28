@@ -28,6 +28,7 @@ from app.api.v1 import chat_quotations as chat_router
 from app.api.v1 import invoices as invoices_router
 from app.api.v1 import notifications as notifications_router
 from app.api.v1 import services as services_router
+from app.api.v1 import support_tickets as tickets_router
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging_config import configure_logging
@@ -155,6 +156,16 @@ app.include_router(
     notifications_router.router,
     prefix="/notifications",
     tags=["notifications"],
+)
+app.include_router(
+    tickets_router.client_router,
+    prefix="/support-tickets",
+    tags=["support-tickets"],
+)
+app.include_router(
+    tickets_router.admin_router,
+    prefix="/admin/support-tickets",
+    tags=["support-tickets-admin"],
 )
 # WebSocket endpoint (no prefix — el path completo es /ws).
 app.include_router(ws_handlers.router, tags=["websocket"])

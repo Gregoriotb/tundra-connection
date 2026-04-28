@@ -425,3 +425,152 @@ export const notificationsApi = {
     return api.delete(`/notifications/${id}`).then(() => undefined);
   },
 };
+
+// ─── Support Tickets ──────────────────────────────────────────────────────
+
+export type TicketTipo = 'incidencia' | 'requerimiento';
+export type TicketServicio =
+  | 'fibra_optica'
+  | 'satelital'
+  | 'servicios_extras'
+  | 'otro';
+export type TicketEstado =
+  | 'abierto'
+  | 'en_revision'
+  | 'remitido'
+  | 'en_proceso'
+  | 'solucionado'
+  | 'cancelado';
+export type TicketPrioridad = 'baja' | 'media' | 'alta' | 'critica';
+
+export interface TicketAuthor {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  profile_photo_url: string | null;
+  is_admin: boolean;
+}
+
+export interface TicketAttachment {
+  url: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+}
+
+export interface HistorialEntry {
+  kind: 'status_change' | 'reply' | 'internal_note' | 'assign';
+  from_estado?: string;
+  to_estado?: string;
+  by_user_id?: string;
+  nota?: string;
+  at: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  ticket_number: string;
+  user_id: string;
+  tipo: TicketTipo;
+  servicio_relacionado: TicketServicio;
+  estado: TicketEstado;
+  prioridad: TicketPrioridad;
+  titulo: string;
+  descripcion: string;
+  adjuntos: TicketAttachment[];
+  assigned_to: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  user: TicketAuthor;
+  assignee: TicketAuthor | null;
+}
+
+export interface SupportTicketDetail extends SupportTicket {
+  notas_internas: string | null;
+  historial_estados: HistorialEntry[];
+}
+
+interface TicketListResponse {
+  items: SupportTicket[];
+  total: number;
+}
+
+export interface CreateTicketBody {
+  tipo: TicketTipo;
+  servicio_relacionado: TicketServicio;
+  titulo: string;
+  descripcion: string;
+  prioridad?: TicketPrioridad;
+}
+
+export interface ReplyTicketBody {
+  content: string;
+}
+
+export interface UpdateStatusBody {
+  estado: TicketEstado;
+  nota?: string;
+}
+
+export interface AssignBody {
+  assigned_to: string | null;
+}
+
+export interface InternalNoteBody {
+  nota: string;
+}
+
+export const ticketsApi = {
+  // Cliente
+  create(body: CreateTicketBody): Promise<SupportTicket> {
+    return post<CreateTicketBody, SupportTicket>('/support-tickets', body);
+  },
+  myTickets(): Promise<TicketListResponse> {
+    return get<TicketListResponse>('/support-tickets/my-tickets');
+  },
+  getMine(id: string): Promise<SupportTicket> {
+    return get<SupportTicket>(`/support-tickets/${id}`);
+  },
+  reply(id: string, body: ReplyTicketBody): Promise<SupportTicket> {
+    return post<ReplyTicketBody, SupportTicket>(
+      `/support-tickets/${id}/reply`,
+      body,
+    );
+  },
+  // Admin
+  adminList(filters?: {
+    estado?: string;
+    prioridad?: string;
+    assigned_to_me?: boolean;
+  }): Promise<TicketListResponse> {
+    const params = new URLSearchParams();
+    if (filters?.estado) params.set('estado', filters.estado);
+    if (filters?.prioridad) params.set('prioridad', filters.prioridad);
+    if (filters?.assigned_to_me) params.set('assigned_to_me', 'true');
+    const qs = params.toString();
+    return get<TicketListResponse>(
+      `/admin/support-tickets${qs ? `?${qs}` : ''}`,
+    );
+  },
+  adminGet(id: string): Promise<SupportTicketDetail> {
+    return get<SupportTicketDetail>(`/admin/support-tickets/${id}`);
+  },
+  adminUpdateStatus(id: string, body: UpdateStatusBody): Promise<SupportTicketDetail> {
+    return api
+      .patch<SupportTicketDetail>(`/admin/support-tickets/${id}/status`, body)
+      .then((r) => r.data);
+  },
+  adminAssign(id: string, body: AssignBody): Promise<SupportTicketDetail> {
+    return api
+      .patch<SupportTicketDetail>(`/admin/support-tickets/${id}/assign`, body)
+      .then((r) => r.data);
+  },
+  adminInternalNote(id: string, body: InternalNoteBody): Promise<SupportTicketDetail> {
+    return post<InternalNoteBody, SupportTicketDetail>(
+      `/admin/support-tickets/${id}/internal-note`,
+      body,
+    );
+  },
+};

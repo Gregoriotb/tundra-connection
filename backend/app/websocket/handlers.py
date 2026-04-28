@@ -34,6 +34,7 @@ from starlette.websockets import WebSocketState
 from app.core.database import SessionLocal
 from app.core.security import TokenError, decode_token
 from app.models.quotation_thread import QuotationThread
+from app.models.support_ticket import SupportTicket
 from app.models.user import User
 from app.websocket.connection import WSConnection
 from app.websocket.manager import manager
@@ -200,10 +201,14 @@ async def _handle_unsubscribe_thread(conn: WSConnection, data: dict[str, Any]) -
 
 
 async def _handle_subscribe_ticket(conn: WSConnection, data: dict[str, Any]) -> None:
-    """Validación se hará contra la tabla support_tickets en FASE 6.
+    """IDOR check real contra support_tickets (R4).
 
-    Por ahora aceptamos la subscripción y la limitaremos a admins para
-    evitar abuso temporal hasta que el modelo exista.
+    Permitidos:
+      - Cualquier admin (todos los tickets).
+      - El dueño del ticket.
+      - El admin asignado al ticket.
+
+    Cualquier otro caller: 'ticket_not_found' (no leak de existencia).
     """
     ticket_id = _parse_uuid(data.get("ticket_id"))
     if ticket_id is None:
@@ -212,12 +217,22 @@ async def _handle_subscribe_ticket(conn: WSConnection, data: dict[str, Any]) -> 
         )
         return
 
-    # Stub seguro: solo admins. FASE 6 reemplaza con check de ownership real.
+    # Admin pasa siempre — accede a cualquier ticket en el panel.
     if not conn.user.is_admin:
-        await conn.send_json(
-            {"type": "error", "payload": {"detail": "ticket_not_found"}}
-        )
-        return
+        with SessionLocal() as db:
+            ticket = db.scalar(
+                select(SupportTicket).where(SupportTicket.id == ticket_id)
+            )
+            if ticket is None or ticket.user_id != conn.user_id:
+                logger.warning(
+                    "ws.subscribe_ticket.idor user_id=%s ticket_id=%s",
+                    conn.user_id,
+                    ticket_id,
+                )
+                await conn.send_json(
+                    {"type": "error", "payload": {"detail": "ticket_not_found"}}
+                )
+                return
 
     conn.subscribe_ticket(ticket_id)
     await conn.send_json(

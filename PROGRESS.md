@@ -3,7 +3,7 @@
 > Documento vivo. Se actualiza al cerrar cada fase del [Orquestor.md](SDD/Orquestor.md).
 
 **Inicio:** 2026-04-27
-**Fase actual:** FASE 6 — Reportes de Fallas (pendiente de iniciar)
+**Fase actual:** FASE 7 — OAuth Google + Onboarding (pendiente de iniciar)
 
 ---
 
@@ -16,7 +16,7 @@
 | 3 | Servicios con Overlays | 🟢 COMPLETA | 2026-04-27 |
 | 4 | Chat-Cotizaciones | 🟢 COMPLETA | 2026-04-27 |
 | 5 | WebSocket + Notificaciones | 🟢 COMPLETA | 2026-04-27 |
-| 6 | Reportes de Fallas | ⚪ Pendiente | — |
+| 6 | Reportes de Fallas | 🟢 COMPLETA | 2026-04-27 |
 | 7 | OAuth Google + Onboarding | ⚪ Pendiente | — |
 | 8 | Admin Completo | ⚪ Pendiente | — |
 | 9 | Grafana Integration | ⚪ Pendiente | — |
@@ -378,6 +378,75 @@ Ninguno.
 
 ---
 
+## CHECKPOINT: TUNDRA-FASE-6-TICKETS
+
+- **Estado:** COMPLETO
+- **Fecha:** 2026-04-27
+- **Branch:** `feature/fase-6-reportes-fallas`
+
+### Archivos creados (10 principales + modificaciones)
+
+**Backend:**
+- [`backend/app/models/support_ticket.py`](backend/app/models/support_ticket.py) — Modelo con 4 CHECKs + 2 relaciones a User (foreign_keys explícitos)
+- [`backend/app/schemas/ticket.py`](backend/app/schemas/ticket.py) — Visibility por shape: `TicketOut` (sin notas) vs `TicketDetailOut` (admin)
+- [`backend/app/api/v1/support_tickets.py`](backend/app/api/v1/support_tickets.py) — 10 endpoints con sequence atómica para `TICK-YYYY-NNNN`
+- [`backend/alembic/versions/0007_support_tickets.py`](backend/alembic/versions/0007_support_tickets.py) — sequence + tabla + partial index sobre tickets activos
+
+**Frontend:**
+- [`frontend/src/components/TicketCreator.tsx`](frontend/src/components/TicketCreator.tsx) — Form 5 campos, success state con ticket_number
+- [`frontend/src/components/TicketList.tsx`](frontend/src/components/TicketList.tsx) — Item con badges de estado + dot prioridad + filtros opcionales
+- [`frontend/src/components/TicketDetail.tsx`](frontend/src/components/TicketDetail.tsx) — Timeline 4 tipos (status_change, reply, internal_note, assign), filtra `internal_note` para clientes
+- [`frontend/src/pages/SupportTicketsPage.tsx`](frontend/src/pages/SupportTicketsPage.tsx) — Pantalla cliente 2-col responsive
+- [`frontend/src/components/admin/TicketKanban.tsx`](frontend/src/components/admin/TicketKanban.tsx) — 6 columnas + quick status change + drawer detalle
+
+**Modificados:**
+- `backend/app/main.py` — montaje de `/support-tickets` y `/admin/support-tickets`
+- `backend/app/models/__init__.py` — registra `SupportTicket`
+- `backend/app/websocket/handlers.py` — `subscribe_ticket` real (deuda de FASE 5 saldada)
+- `frontend/src/services/api.ts` — `ticketsApi` completo (10 métodos cliente + admin)
+
+### Decisiones especiales
+
+- **`ticket_number` con sequence Postgres** (`support_ticket_seq` global) → atomicidad garantizada bajo concurrencia. Formato `TICK-{YYYY}-{NNNN}` con `:04d` (los primeros 9999 cumplen).
+- **Visibilidad por shape (R4 a nivel de response_model)** — handlers cliente usan `TicketOut`, admin usa `TicketDetailOut`. Imposible filtrar mal por accidente.
+- **`historial_estados` append-only** con asignación de lista nueva (`[*old, new]`) para que SQLAlchemy detecte el cambio del JSONB.
+- **System messages por evento** — `kind: status_change | reply | internal_note | assign` en cada entry, frontend renderiza diferenciado.
+- **Reply guardado en `historial_estados`** en lugar de tabla aparte (R14: el spec no declara `ticket_messages`).
+- **Filtrado de `internal_note` en frontend** — defensa en profundidad sobre la visibility del backend.
+- **Sin drag-and-drop en Kanban** — quick-action `<select>` cumple la UX sin agregar lib externa.
+- **Partial index sobre tickets activos** (`WHERE estado NOT IN ('solucionado', 'cancelado')`) → query principal del Kanban ultra-rápida.
+- **`subscribe_ticket` real** — admin pasa siempre, cliente solo si es dueño. Cierra deuda de FASE 5.
+
+### Tests pasados (manual)
+- [ ] `alembic upgrade head` aplica `0007` (sequence + tabla + índices).
+- [ ] `POST /support-tickets` → 201 con `ticket_number=TICK-2026-0001`. Segunda creación → 0002.
+- [ ] `GET /support-tickets/{id_ajeno}` → 404.
+- [ ] `GET /admin/support-tickets/{id}` con `notas_internas` poblado → admin ve, cliente no (ruta cliente).
+- [ ] `PATCH /admin/.../status` → emite `ticket_updated` por WS, cliente recibe `notification`.
+- [ ] `PATCH /admin/.../assign` con `assigned_to=<user_no_admin>` → 400.
+- [ ] `POST /admin/.../internal-note` → entry con `kind='internal_note'` aparece en timeline admin pero NO en cliente.
+- [ ] Frontend: crear ticket → aparece en `SupportTicketsPage`. Admin abre Kanban → ve la nueva card en columna "Abierto". Admin cambia estado con `<select>` → cliente recibe push y badge.
+- [ ] Ticket marcado como `solucionado` → input deshabilitado en `TicketDetail` cliente.
+
+### Reglas aplicadas (sumadas)
+| Regla | Dónde |
+|-------|-------|
+| R4 visibility | `TicketDetailOut` solo en `/admin/*`; frontend filtra `internal_note` |
+| R5 ORM | `select(...)` en todo |
+| R9 sanitize | `sanitize_user_text` en titulo/descripcion/reply/nota |
+| R13 audit | log WARNING en cambio de estado, asignación, internal note |
+| R14 | exactamente los 10 endpoints listados |
+
+### Pendientes / TODO
+- **Adjuntos reales (ImgBB)** — endpoint `/support-tickets/{id}/attachments` no implementado todavía (planificado FASE 7).
+- **Drag-and-drop en Kanban** — fuera de scope, se valuará si el negocio lo pide.
+- **Reapertura de tickets terminales** — el endpoint admin permite reabrir cambiando estado, pero el cliente no tiene flow para "solicitar reapertura". Se evaluará en iteración futura.
+
+### Siguiente fase
+**FASE 7 — OAuth Google + Onboarding.** Endpoints `/auth/google/login` + `callback`, página `OnboardingPage`, banner "Completa tu RIF/dirección". Cierra el flow de cuentas Google-only que dejamos en FASE 1 con `hashed_password=NULL`. Activa upload de foto de perfil + RIF (con ImgBB + fallback local).
+
+---
+
 ## Bitácora
 
 - **2026-04-27** — Inicio FASE 1. Memoria + `PROGRESS.md` creados. Repo público en GitHub: <https://github.com/Gregoriotb/tundra-connection>. Branches `main` (protegida), `develop`, `feature/fase-1-fundacion-auth`.
@@ -386,3 +455,4 @@ Ninguno.
 - **2026-04-27** — FASE 3 completa: modelos `Service` + `Invoice`, endpoints `/services`, `/invoices/checkout` con discriminated union (PRODUCT_SALE + INTERNET_SERVICE) y lock pesimista de stock, seed de los 3 servicios con planes, `ServiceCard` + `ServiceOverlay` (Framer Motion stagger) + `InternetPlanModal`. Bonus: scaffold del frontend (package.json, vite, tsconfig, tailwind), `App.tsx`, `ServicesSection.tsx`. Pendiente: smoke test + `npm install`.
 - **2026-04-27** — FASE 4 completa: modelos `QuotationThread` + `ChatMessage`, endpoints `/chat-quotations` (cliente) + `/admin/threads` (admin), `ChatMessage` (3 estilos), `ChatThread` con polling 5s + append optimista, `QuotationsPage` 2-col responsive. Polling marcado como deuda explícita — swap a WebSocket en FASE 5 con refactor mínimo (`setDetail` es punto único de mutación).
 - **2026-04-27** — FASE 5 completa: `SecureWSManager` (R7 — 1 conn/user, heartbeat 30s, timeout 120s, sweeper background), endpoint `/ws?token=` con auth JWT y dispatcher de actions (subscribe_thread con IDOR check), modelo `Notification` + endpoints CRUD, `notification_service.notify()` que crea fila + emite WS best-effort, `WebSocketContext` con backoff exponencial + re-suscripción tras reconnect, `NotificationBell` con push tiempo real + mark-read optimista, **deuda del polling pagada**: ChatThread ahora usa WS push + polling fallback solo si WS caído (30s). `sanitize_user_text` aplicado en chat (con sanitización de `<script>`/`<iframe>`/control chars).
+- **2026-04-27** — FASE 6 completa: modelo `SupportTicket` con `historial_estados` JSONB append-only + sequence atómica para `TICK-YYYY-NNNN`, 10 endpoints (5 cliente + 5 admin) con visibility por shape (`TicketOut` vs `TicketDetailOut`), `subscribe_ticket` real activado en handlers.py (R4 IDOR vs BD), `TicketCreator` (form 5 campos), `TicketList` (filtros + tones por estado), `TicketDetail` (timeline 4 tipos, filtra `internal_note` para clientes), `SupportTicketsPage` cliente, `TicketKanban` admin con quick-action de estado optimista. Migración `0007` con partial index sobre tickets activos.
