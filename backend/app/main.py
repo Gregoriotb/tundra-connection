@@ -1,0 +1,232 @@
+"""Tundra Connection — FastAPI application entrypoint.
+
+Spec: Orquestor.md §FASE 1 + SECURITY_RULES.md
+- R8  CORS estricto: allow_origins=[FRONTEND_URL], no "*" con credentials
+- R11 Security headers en cada respuesta
+- R12 Rate limiting (slowapi) montado a nivel de app
+- R13 Logging estructurado
+- R17 redirect_slashes=False — los prefijos NO llevan "/" final
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from app.api.v1 import admin as admin_router
+from app.api.v1 import api_keys as api_keys_router
+from app.api.v1 import auth as auth_router
+from app.api.v1 import catalog as catalog_router
+from app.api.v1 import chat_quotations as chat_router
+from app.api.v1 import invoices as invoices_router
+from app.api.v1 import notifications as notifications_router
+from app.api.v1 import services as services_router
+from app.api.v1 import support_tickets as tickets_router
+from app.api.v1 import users as users_router
+from app.services.upload_service import get_uploads_dir
+from app.core.config import settings
+from app.core.limiter import limiter
+from app.core.logging_config import configure_logging
+from app.websocket import handlers as ws_handlers
+from app.websocket.manager import manager as ws_manager
+
+configure_logging()
+logger = logging.getLogger("tundra.app")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Startup/shutdown hooks. DB engine se gestiona en core.database."""
+    logger.info(
+        "tundra.startup environment=%s frontend=%s",
+        settings.ENVIRONMENT,
+        settings.FRONTEND_URL,
+    )
+    # WebSocket manager lifecycle (R7).
+    ws_manager.attach_loop(asyncio.get_running_loop())
+    ws_manager.start_sweeper()
+    try:
+        yield
+    finally:
+        await ws_manager.shutdown()
+        logger.info("tundra.shutdown")
+
+
+app = FastAPI(
+    title="Tundra Connection API",
+    version="1.0.0",
+    description="Plataforma B2B/B2C de telecomunicaciones — backend FastAPI.",
+    redirect_slashes=False,  # R17
+    lifespan=lifespan,
+    docs_url="/docs" if settings.ENVIRONMENT != "production" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT != "production" else None,
+    openapi_url="/openapi.json" if settings.ENVIRONMENT != "production" else None,
+)
+
+# ── Rate limiting (R12) ──────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# ── Security headers (R11) ───────────────────────────────────────────────────
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Inserta cabeceras de seguridad en TODAS las respuestas."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=()"
+        )
+        if settings.ENVIRONMENT == "production":
+            response.headers["Strict-Transport-Security"] = (
+                "max-age=31536000; includeSubDomains; preload"
+            )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── CORS (R8) ────────────────────────────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.FRONTEND_URL],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    expose_headers=["X-Request-Id"],
+    max_age=600,
+)
+
+
+# ── Global error handler ─────────────────────────────────────────────────────
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Captura cualquier excepción no controlada sin filtrar tracebacks al cliente."""
+    logger.exception(
+        "tundra.unhandled path=%s method=%s error=%s",
+        request.url.path,
+        request.method,
+        type(exc).__name__,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+# ── Health checks ────────────────────────────────────────────────────────────
+# /health  — liveness: el proceso responde. No toca BD.
+# /healthz — readiness: verifica conexión a DB. Lo usa Railway para
+#            decidir si tumba el contenedor.
+
+
+@app.get("/health", tags=["meta"])
+async def health() -> dict[str, str]:
+    return {"status": "ok", "service": "tundra-connection", "version": "1.0.0"}
+
+
+@app.get("/healthz", tags=["meta"])
+def healthz() -> dict[str, str]:
+    """Readiness: ping a la BD. Si falla, devuelve 503 explícito."""
+    from sqlalchemy import text
+
+    from app.core.database import SessionLocal
+
+    db_ok = False
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception as exc:  # pragma: no cover
+        logger.warning("healthz.db_failed err=%s", exc)
+
+    if not db_ok:
+        return JSONResponse(  # type: ignore[return-value]
+            status_code=503,
+            content={"status": "degraded", "db": "down"},
+        )
+    return {"status": "ok", "db": "up"}
+
+
+# ── Routers v1 (R17: prefijos sin "/" final) ─────────────────────────────────
+app.include_router(auth_router.router, prefix="/auth", tags=["auth"])
+app.include_router(catalog_router.public_router, prefix="/catalog", tags=["catalog"])
+app.include_router(
+    catalog_router.admin_router,
+    prefix="/admin/catalog",
+    tags=["catalog-admin"],
+)
+app.include_router(
+    services_router.public_router,
+    prefix="/services",
+    tags=["services"],
+)
+app.include_router(invoices_router.router, prefix="/invoices", tags=["invoices"])
+app.include_router(
+    invoices_router.admin_router,
+    prefix="/admin/invoices",
+    tags=["invoices-admin"],
+)
+app.include_router(
+    chat_router.client_router,
+    prefix="/chat-quotations",
+    tags=["chat"],
+)
+app.include_router(
+    chat_router.admin_router,
+    prefix="/admin/threads",
+    tags=["chat-admin"],
+)
+app.include_router(
+    notifications_router.router,
+    prefix="/notifications",
+    tags=["notifications"],
+)
+app.include_router(
+    users_router.router,
+    prefix="/users/profile",
+    tags=["users"],
+)
+# Static files for uploaded images/docs (R6 fallback local).
+# En producción tras CDN/ImgBB esto puede deshabilitarse, pero mantenerlo
+# permite que las URLs `/uploads/...` sigan resolviendo si hay archivos.
+app.mount(
+    "/uploads",
+    StaticFiles(directory=get_uploads_dir(), check_dir=False),
+    name="uploads",
+)
+app.include_router(
+    tickets_router.client_router,
+    prefix="/support-tickets",
+    tags=["support-tickets"],
+)
+app.include_router(
+    tickets_router.admin_router,
+    prefix="/admin/support-tickets",
+    tags=["support-tickets-admin"],
+)
+app.include_router(
+    api_keys_router.router,
+    prefix="/admin/api-keys",
+    tags=["api-keys-admin"],
+)
+app.include_router(
+    admin_router.router,
+    prefix="/admin",
+    tags=["admin"],
+)
+# WebSocket endpoint (no prefix — el path completo es /ws).
+app.include_router(ws_handlers.router, tags=["websocket"])
