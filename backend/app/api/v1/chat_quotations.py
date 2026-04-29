@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
@@ -305,14 +305,15 @@ def post_message(
 )
 def post_attachment(
     thread_id: UUID,
-    attachments: list[AttachmentOut] = Query(
+    attachments: list[AttachmentOut] = Body(
         ...,
+        embed=True,
         description=(
             "Lista de adjuntos ya subidos a almacenamiento. "
-            "Body equivalente a {attachments: [...]}."
+            "Body: {\"attachments\": [...], \"note\": \"...\"}"
         ),
     ),
-    note: str | None = None,
+    note: str | None = Body(default=None, embed=True),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> MessageOut:
