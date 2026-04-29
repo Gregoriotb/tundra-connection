@@ -12,7 +12,12 @@ Spec:
       UPDATE users SET hashed_password=NULL WHERE email='admin';
 """
 
-from __future__ import annotations
+# NOTA: NO usar `from __future__ import annotations` aquí. La combinación
+# de @router.post + @limiter.limit (slowapi) rompe la resolución de
+# forward refs string-style que FastAPI hace vía get_type_hints() — el
+# wrapper de slowapi no preserva el __globals__ correcto, y FastAPI no
+# encuentra UserRegisterIn/etc en el namespace al evaluar las anotaciones.
+# Mantenemos las anotaciones eager (modo Python normal) en este archivo.
 
 import logging
 import secrets
