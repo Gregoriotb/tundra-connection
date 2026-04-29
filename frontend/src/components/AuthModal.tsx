@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { Lock, LogIn, UserPlus } from 'lucide-react';
 
 import { useAuth } from '../contexts/AuthContext';
+import { ApiError } from '../services/api';
 import type { AccountType } from '../types';
 
 type Mode = 'login' | 'register';
@@ -122,8 +123,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }): JSX.Element {
       await login({ email: identifier.trim() as never, password });
       onSuccess();
     } catch (err) {
-      const e = err as { response?: { data?: { detail?: string } } };
-      setError(e.response?.data?.detail ?? 'Credenciales inválidas');
+      setError(extractError(err, 'Credenciales inválidas'));
     } finally {
       setBusy(false);
     }
@@ -131,14 +131,9 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }): JSX.Element {
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
-      <div className="flex flex-col gap-1">
-        <h2 className="font-display text-2xl text-tundra-gold">
-          Bienvenido de nuevo
-        </h2>
-        <p className="text-xs text-white/40 uppercase tracking-wider">
-          Si eres admin, usa <code className="text-tundra-gold/80">admin</code> como identificador.
-        </p>
-      </div>
+      <h2 className="font-display text-2xl text-tundra-gold">
+        Bienvenido de nuevo
+      </h2>
 
       <Field label="Email o identificador">
         <input
@@ -210,8 +205,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }): JSX.Element {
       });
       onSuccess();
     } catch (err) {
-      const e = err as { response?: { data?: { detail?: string } } };
-      setError(e.response?.data?.detail ?? 'No se pudo crear la cuenta');
+      setError(extractError(err, 'No se pudo crear la cuenta'));
     } finally {
       setBusy(false);
     }
@@ -333,3 +327,25 @@ function ErrorBox({ message }: { message: string }): JSX.Element {
 
 const inputCls =
   'w-full px-3 py-2.5 bg-black/40 border border-tundra-border rounded-md text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-tundra-gold';
+
+// Traducciones de mensajes comunes del backend (en inglés) → español user-friendly.
+const ERROR_TRANSLATIONS: Record<string, string> = {
+  'Invalid credentials': 'Email o contraseña incorrectos',
+  'Account is inactive': 'La cuenta está desactivada',
+  'Identifier reserved': 'Ese identificador está reservado',
+  'Could not register with the provided data':
+    'No se pudo registrar con esos datos. Verifica que el email no esté en uso.',
+  'Bootstrap conflict, retry': 'Conflicto al crear el admin. Inténtalo de nuevo.',
+  'Network error': 'Sin conexión al servidor. Revisa tu internet.',
+  'Validation error': 'Datos inválidos. Revisa los campos.',
+};
+
+function extractError(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return ERROR_TRANSLATIONS[err.detail] ?? err.detail ?? fallback;
+  }
+  if (err instanceof Error) {
+    return err.message || fallback;
+  }
+  return fallback;
+}
