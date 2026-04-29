@@ -167,10 +167,16 @@ class PasswordChangeIn(_InputBase):
 
 
 class UserOut(_OutputBase):
-    """Respuesta /users/profile y /auth/verify — vista privada (mismo user)."""
+    """Respuesta /users/profile y /auth/verify — vista privada (mismo user).
+
+    Nota: `email` es `str` (no `EmailStr`) porque el identifier admin
+    bootstrap ("admin") no es un email válido pero sí es un usuario real
+    del sistema. La validación de email se aplica solo en inputs de
+    register, no al serializar al cliente.
+    """
 
     id: UUID
-    email: EmailStr
+    email: str
     is_admin: bool
     account_type: Optional[Literal["empresa", "particular"]]
     first_name: Optional[str]
