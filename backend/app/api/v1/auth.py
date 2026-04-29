@@ -44,6 +44,7 @@ from app.services.email_service import send_welcome
 from app.schemas.user import (
     ADMIN_IDENTIFIER,
     AuthTokensOut,
+    PasswordChangeIn as PasswordChangePayload,
     UserLoginIn,
     UserOut,
     UserRegisterIn,
@@ -407,13 +408,11 @@ def google_callback(
     summary="Cambia el password del usuario autenticado.",
 )
 def change_password(
-    payload: "PasswordChangePayload",  # forward ref para evitar import circular
+    payload: PasswordChangePayload,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
-    from app.schemas.user import PasswordChangeIn
-
-    body = PasswordChangeIn.model_validate(payload)
+    body = payload
     if not current_user.hashed_password or not verify_password(
         body.current_password.get_secret_value(), current_user.hashed_password
     ):
@@ -427,7 +426,3 @@ def change_password(
     )
     db.commit()
     logger.info("auth.password.changed user_id=%s", current_user.id)
-
-
-# Forward-ref alias para que FastAPI parse el body correctamente.
-from app.schemas.user import PasswordChangeIn as PasswordChangePayload  # noqa: E402,F401
