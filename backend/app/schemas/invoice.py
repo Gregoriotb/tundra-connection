@@ -47,12 +47,15 @@ class ProductSaleLineIn(_CheckoutBase):
 
     item_id: UUID
     quantity: int = Field(..., ge=1, le=100)
-    unit_price: Optional[Decimal] = Field(
-        default=None,
-        max_digits=10,
-        decimal_places=2,
-        ge=Decimal("0.00"),
-    )
+    # Optional[Annotated[...]] aplica los constraints solo al Decimal,
+    # no al None. Hacerlo al revés (Field con max_digits sobre Optional)
+    # rompe en Pydantic 2.7 con "Unknown constraint max_digits".
+    unit_price: Optional[
+        Annotated[
+            Decimal,
+            Field(max_digits=10, decimal_places=2, ge=Decimal("0.00")),
+        ]
+    ] = None
 
 
 class ProductSaleCheckoutIn(_CheckoutBase):
