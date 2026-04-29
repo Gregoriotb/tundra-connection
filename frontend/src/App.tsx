@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { AuthModal } from './components/AuthModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ProfileCompletionBanner } from './components/ProfileCompletionBanner';
 import { AdminPage } from './pages/AdminPage';
@@ -36,8 +37,9 @@ export default function App(): JSX.Element {
  * perfil incompleto (sutil).
  */
 function AppShell(): JSX.Element {
-  const { user, status: authStatus } = useAuth();
-  const [, setShowLogin] = useState(false);
+  const { user, status: authStatus, logout } = useAuth();
+  const [showLogin, setShowLogin] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [forceOnboarding, setForceOnboarding] = useState(false);
 
   // Hash-based routing minimal: #admin abre el panel; cualquier otro hash
@@ -96,7 +98,43 @@ function AppShell(): JSX.Element {
                 Admin
               </a>
             )}
-            <NotificationBell />
+            {authStatus === 'authenticated' && user ? (
+              <>
+                <NotificationBell />
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                  <span className="text-white/50 hidden sm:inline">
+                    {user.first_name?.trim() || user.email}
+                  </span>
+                  <button
+                    onClick={() => void logout()}
+                    className="text-white/50 hover:text-tundra-gold border border-tundra-border hover:border-tundra-gold/40 rounded px-2.5 py-1"
+                  >
+                    Salir
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setAuthMode('login');
+                    setShowLogin(true);
+                  }}
+                  className="text-xs uppercase tracking-wider text-white/70 hover:text-white px-2.5 py-1"
+                >
+                  Entrar
+                </button>
+                <button
+                  onClick={() => {
+                    setAuthMode('register');
+                    setShowLogin(true);
+                  }}
+                  className="text-xs uppercase tracking-wider bg-tundra-gold text-black rounded px-3 py-1.5 hover:bg-yellow-300"
+                >
+                  Crear cuenta
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -111,6 +149,13 @@ function AppShell(): JSX.Element {
       <footer className="border-t border-tundra-border py-12 px-6 text-center text-white/30 text-xs uppercase tracking-wider">
         © 2026 Tundra Connection · Telecomunicaciones
       </footer>
+
+      {showLogin && (
+        <AuthModal
+          initialMode={authMode}
+          onClose={() => setShowLogin(false)}
+        />
+      )}
     </div>
   );
 }
