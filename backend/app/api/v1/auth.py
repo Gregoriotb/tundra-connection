@@ -23,7 +23,7 @@ import logging
 import secrets
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -93,6 +93,7 @@ def _client_ip(request: Request) -> str:
 @limiter.limit(settings.RATE_LIMIT_REGISTER)
 def register(
     request: Request,
+    response: Response,  # slowapi inyecta headers de rate-limit aquí
     payload: UserRegisterIn,
     db: Session = Depends(get_db),
 ) -> AuthTokensOut:
@@ -168,6 +169,7 @@ def register(
 @limiter.limit(settings.RATE_LIMIT_LOGIN)
 def login(
     request: Request,
+    response: Response,  # slowapi inyecta headers de rate-limit aquí
     payload: UserLoginIn,
     db: Session = Depends(get_db),
 ) -> AuthTokensOut:
