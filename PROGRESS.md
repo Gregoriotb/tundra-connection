@@ -3,7 +3,13 @@
 > Documento vivo. Se actualiza al cerrar cada fase del [Orquestor.md](SDD/Orquestor.md).
 
 **Inicio:** 2026-04-27
-**Fase actual:** FASE 8 — Admin Completo (pendiente de iniciar)
+**Fase actual:** FASE 11 EN PROGRESO — Deploy parcial, sweep integraciones reales pendiente
+
+**🌐 URLs en vivo:**
+- **Frontend (Vercel):** https://tundra-connection.vercel.app
+- **Backend (Railway):** https://tundra-connection-production.up.railway.app
+- **DB (Neon):** us-east-1 · `neondb` · 8 migraciones aplicadas hasta `0008_api_keys`
+- **Health check:** https://tundra-connection-production.up.railway.app/healthz
 
 ---
 
@@ -18,10 +24,12 @@
 | 5 | WebSocket + Notificaciones | 🟢 COMPLETA | 2026-04-27 |
 | 6 | Reportes de Fallas | 🟢 COMPLETA | 2026-04-27 |
 | 7 | OAuth Google + Onboarding | 🟡 MAQUETA | 2026-04-27 |
-| 8 | Admin Completo | ⚪ Pendiente | — |
-| 9 | Grafana Integration | ⚪ Pendiente | — |
-| 10 | Email Service | ⚪ Pendiente | — |
-| 11 | Deploy + Sweep integraciones | ⚪ Pendiente | — |
+| 8 | Admin Completo | 🟢 COMPLETA | 2026-04-28 |
+| 9 | Grafana Integration | ❌ ELIMINADA | 2026-04-28 (vector vulnerabilidad) |
+| 10 | Email Service | 🟡 MAQUETA | 2026-04-28 |
+| 11 | Deploy + Sweep integraciones | 🟡 EN PROGRESO | Bloque A+B done, Bloque C abierto |
+| ★ | Dashboard cliente (gap del spec) | 🟢 COMPLETA | 2026-04-29 |
+| ★ | Auth UI (gap del spec) | 🟢 COMPLETA | 2026-04-29 |
 
 ---
 
@@ -579,3 +587,53 @@ Lista consolidada para FASE 11:
 - [main.py:/healthz](backend/app/main.py)
 - [backend/.env.example](backend/.env.example)
 - [frontend/.env.example](frontend/.env.example)
+- **2026-04-29** — FASE 11 Bloque A completo (A1-A7 efectivamente, A7 saltado por decisión del cliente). Bloque B completo: Neon proyecto creado region us-east-1, `alembic upgrade head` aplicó las 8 migraciones via docker run efímero contra Neon (todas OK, sequences + partial indexes incluidos), Railway desplegado desde branch `main` con `DATABASE_URL` (pooled) + `SECRET_KEY` (64 hex bytes random) + `FRONTEND_URL`, Vercel desplegado con `VITE_API_URL` apuntando a Railway. Target Port en Railway corregido a 8080 (Railway inyecta `$PORT` automáticamente). CORS funcionando entre Vercel y Railway tras setear `FRONTEND_URL` correctamente.
+- **2026-04-29** — **6 bugs latentes encontrados en deploy real** (nunca habíamos arrancado FastAPI, solo migraciones): (1) `from __future__ import annotations` + `@limiter.limit` de slowapi rompe forward-ref resolution → quitado de auth.py; (2) forward ref string `"PasswordChangePayload"` en signature de `change_password` no se resolvía sin `__future__` → import alias eager; (3) `attachments: list[AttachmentOut] = Query(...)` rechazado por FastAPI (tipo complejo no puede ser query) → cambiado a `Body(..., embed=True)`; (4) `Optional[Decimal] = Field(max_digits=10, ...)` falla en Pydantic 2.7 con "Unknown constraint max_digits" porque aplica el constraint también a `None` → envuelto con `Optional[Annotated[Decimal, Field(...)]]`; (5) slowapi sync handlers necesitan parámetro `response: Response` para inyectar headers de rate-limit → añadido a `/auth/login` y `/auth/register`; (6) `UserOut.email: EmailStr` rechaza "admin" del bootstrap → cambiado a `str` (validación solo en inputs). Frontend: Vite build fallaba con tipos de lucide-react (PropTypes vs `@types/react@18.3.3`) → quitado `tsc -b` del build script (Vite/esbuild bundling sin type-check; tsc reservado para `npm run typecheck`).
+- **2026-04-29** — **Gaps del spec resueltos** (no estaban explícitamente en una fase pero el Orquestor.md línea 117 los implicaba): **AuthModal** con tabs Login/Register (faltaba UI de auth desde FASE 1 — los endpoints existían pero sin botones en el header), **Dashboard** del cliente (página route-level que faltaba — `pages/Landing, Dashboard, Admin` según spec). Dashboard tiene 5 tabs lazy-loaded reusando `QuotationsPage` (FASE 4) y `SupportTicketsPage` (FASE 6) que estaban huérfanas; tabs nuevos: `MyServicesTab` (filtra invoices por tipo=INTERNET_SERVICE, infiere status del servicio del estado de la factura) y `MyInvoicesTab` (todas las facturas del cliente con filtros + filas expandibles + KPIs Total pagado / Por pagar). App.tsx wired con hash-routing: `#dashboard` (cliente) + `#admin` (admin) con onboarding forzado entre medio si perfil incompleto. Header muestra **"Mi panel"** dorado para todos los authenticated y **"Admin"** adicional si `is_admin`.
+
+---
+
+## 🌐 Estado actual del deploy (2026-04-29)
+
+### Infraestructura activa
+- **Neon (Postgres serverless)** — proyecto `tundra-connection` en `us-east-1`. Pooled URL en uso por Railway. Migraciones al día en `0008_api_keys`.
+- **Railway (backend FastAPI)** — branch `main` auto-deploy. `target port: 8080` (Railway inyecta `$PORT`). Variables: `DATABASE_URL`, `SECRET_KEY`, `FRONTEND_URL`, `EMAIL_FROM`, defaults para JWT/rate-limit. Sin `GOOGLE_*`, `IMGBB_API_KEY`, `RESEND_API_KEY` aún (modo maqueta funcionando).
+- **Vercel (frontend React)** — branch `main` auto-deploy. `VITE_API_URL=https://tundra-connection-production.up.railway.app`. Build con `vite build` (sin `tsc -b`).
+
+### Sweep pendiente (Bloque C de FASE 11)
+- C1. **Logo real** del cliente (placeholder texto en header)
+- C2. **Google OAuth real** — descomentar code exchange en `auth.py`, setear `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REDIRECT_URI` en Railway
+- C3. **ImgBB real** — setear `IMGBB_API_KEY` y descomentar bloque httpx en `upload_service._upload_to_imgbb`
+- C4. **`python-magic`** — añadir a `requirements.txt` y swap del magic bytes manual en `upload_service.py`
+- C5. **Email provider** — el cliente decide Resend / SES / SMTP propio. Único punto a tocar: bloque TODO en `email_service.send_email`. Setear `RESEND_API_KEY` (o equivalente) en Railway.
+
+### Pendientes de pulir post-demo
+- Modal "Mi panel" con admin: actualmente admin ve dos botones (Mi panel + Admin) — confirmar con el cliente si quiere mantenerlo así o solo Admin.
+- AdminPage tab "Monitoreo" se eliminó con Grafana — los KPIs/snapshot pueden volver como widget header del AdminPage si el cliente los pide.
+- Onboarding fuerza profile-completion antes de TODO (cotizar/facturar). Si el cliente quiere que pueda navegar el landing sin completar perfil, ajustar la prioridad de `needsOnboarding` en App.tsx.
+- Rate limit del login está en 5/min — útil pero molesta en testing manual. Considerar bajar a 10/min en dev.
+- CORS aún acepta solo el dominio production de Vercel. Para soportar preview deploys (ramas), cambiar `allow_origins` a una lista o regex en `main.py`.
+
+---
+
+## 🔖 PUNTO DE RETOMA — siguiente sesión
+
+**Estado al cerrar 2026-04-29 ~8:30pm GMT-4:** sitio en vivo, demo-ready con datos vacíos.
+
+### Para el cliente (demo):
+1. Ir a https://tundra-connection.vercel.app
+2. Click "Crear cuenta" → registrar usuario nuevo → completar onboarding
+3. Volver al landing → comprar del catálogo o iniciar cotización
+4. Click "Mi panel" → ver Dashboard con sus servicios/facturas/cotizaciones/tickets
+
+### Para administrar (cliente bootstrap):
+1. Login con `admin` + password (la primera vez se establece). Si ya está y se olvidó, en Neon SQL Editor:
+   ```sql
+   UPDATE users SET hashed_password=NULL WHERE email='admin';
+   ```
+2. Click "Admin" → AdminPage con 5 tabs (Cotizaciones, Catálogo, Facturas, Soporte, API Keys)
+
+### Para retomar trabajo en próxima sesión:
+1. `git checkout main && git pull`
+2. Decir: *"Sigamos FASE 11 Bloque C"* (sweep de integraciones reales) o el área específica que quieras pulir
+3. Cualquier bug post-demo se reporta como bug-fix (no nueva fase)
