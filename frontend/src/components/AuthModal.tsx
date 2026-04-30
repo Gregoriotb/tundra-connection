@@ -259,7 +259,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }): JSX.Element {
 
       <Field label="Tipo de cuenta">
         <div className="grid grid-cols-2 gap-2">
-          {(['personal', 'empresa'] as AccountType[]).map((t) => {
+          {(['particular', 'empresa'] as AccountType[]).map((t) => {
             const active = accountType === t;
             return (
               <button
@@ -273,7 +273,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }): JSX.Element {
                     : 'border-tundra-border text-white/50 hover:text-white',
                 ].join(' ')}
               >
-                {t === 'personal' ? 'Personal' : 'Empresa'}
+                {t === 'particular' ? 'Personal' : 'Empresa'}
               </button>
             );
           })}
