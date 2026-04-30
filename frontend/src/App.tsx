@@ -1,9 +1,14 @@
 /**
  * App — root layout y providers.
  *
- * En esta etapa (FASE 3) la app monta directamente la landing con las
- * secciones Catálogo + Servicios. Las páginas Login/Admin/Dashboard
- * llegarán en FASES 7-8.
+ * Orquestor.md línea 117: pages/ — Landing, Dashboard, Admin (3 niveles).
+ * El routing es hash-based minimal:
+ *   ""           → Landing (público)
+ *   "#dashboard" → Dashboard (cliente autenticado)
+ *   "#admin"     → AdminPage (admin only)
+ *
+ * Onboarding incompleto se fuerza ANTES de Dashboard pero NO antes de
+ * Admin (los admins ya entran con perfil completo del bootstrap).
  */
 
 import { useEffect, useState } from 'react';
@@ -12,6 +17,7 @@ import { AuthModal } from './components/AuthModal';
 import { NotificationBell } from './components/NotificationBell';
 import { ProfileCompletionBanner } from './components/ProfileCompletionBanner';
 import { AdminPage } from './pages/AdminPage';
+import { Dashboard } from './pages/Dashboard';
 import { OnboardingPage } from './pages/OnboardingPage';
 import { CatalogSection } from './sections/CatalogSection';
 import { ServicesSection } from './sections/ServicesSection';
@@ -71,9 +77,26 @@ function AppShell(): JSX.Element {
     );
   }
 
+  // Onboarding incompleto bloquea Dashboard y Landing — la cuenta debe
+  // tener perfil completo antes de cotizar/facturar (R9 + decisión del cliente).
   if (needsOnboarding || forceOnboarding) {
     return (
       <OnboardingPage onComplete={() => setForceOnboarding(false)} />
+    );
+  }
+
+  // Ruta dashboard cliente: Dashboard maneja su propia protección
+  // (mensaje "Inicia sesión" si !authenticated).
+  if (route === 'dashboard') {
+    return (
+      <Dashboard
+        onExit={() => {
+          window.location.hash = '';
+        }}
+        onStartNewQuotation={() => {
+          window.location.hash = '';
+        }}
+      />
     );
   }
 
@@ -90,16 +113,22 @@ function AppShell(): JSX.Element {
             <a href="#contacto" className="hover:text-white">Contacto</a>
           </nav>
           <div className="flex items-center gap-3">
-            {user?.is_admin && (
-              <a
-                href="#admin"
-                className="text-xs uppercase tracking-wider text-tundra-gold hover:text-yellow-300 border border-tundra-gold/40 rounded px-2.5 py-1"
-              >
-                Admin
-              </a>
-            )}
             {authStatus === 'authenticated' && user ? (
               <>
+                <a
+                  href="#dashboard"
+                  className="text-xs uppercase tracking-wider text-tundra-gold hover:text-yellow-300 border border-tundra-gold/40 rounded px-2.5 py-1"
+                >
+                  Mi panel
+                </a>
+                {user.is_admin && (
+                  <a
+                    href="#admin"
+                    className="text-xs uppercase tracking-wider text-tundra-gold hover:text-yellow-300 border border-tundra-gold/40 rounded px-2.5 py-1"
+                  >
+                    Admin
+                  </a>
+                )}
                 <NotificationBell />
                 <div className="flex items-center gap-2 text-xs uppercase tracking-wider">
                   <span className="text-white/50 hidden sm:inline">
