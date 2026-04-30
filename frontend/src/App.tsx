@@ -59,6 +59,13 @@ function AppShell(): JSX.Element {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  // Si alguien sin sesión admin tiene #admin en la URL, lo limpiamos.
+  useEffect(() => {
+    if (route === 'admin' && !(authStatus === 'authenticated' && user?.is_admin)) {
+      window.location.hash = '';
+    }
+  }, [route, authStatus, user]);
+
   // Forzar onboarding si está autenticado y le falta lo básico
   // (account_type / nombre / phone). Banner sutil cubre el resto.
   const needsOnboarding =
@@ -66,16 +73,12 @@ function AppShell(): JSX.Element {
     user !== null &&
     !user.has_completed_onboarding;
 
-  // Ruta admin: AdminPage maneja su propia protección (404 si !is_admin).
-  if (route === 'admin') {
-    return (
-      <AdminPage
-        onExit={() => {
-          window.location.hash = '';
-        }}
-      />
-    );
+  // Admin autenticado: el panel es su única vista. No ve landing ni dashboard
+  // de cliente. Salir del panel = logout (gestionado por AdminPage.onExit).
+  if (authStatus === 'authenticated' && user?.is_admin) {
+    return <AdminPage onExit={() => void logout()} />;
   }
+
 
   // Onboarding incompleto bloquea Dashboard y Landing — la cuenta debe
   // tener perfil completo antes de cotizar/facturar (R9 + decisión del cliente).
