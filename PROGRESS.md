@@ -608,7 +608,6 @@ Lista consolidada para FASE 11:
 - C5. **Email provider** — el cliente decide Resend / SES / SMTP propio. Único punto a tocar: bloque TODO en `email_service.send_email`. Setear `RESEND_API_KEY` (o equivalente) en Railway.
 
 ### Pendientes de pulir post-demo
-- Modal "Mi panel" con admin: actualmente admin ve dos botones (Mi panel + Admin) — confirmar con el cliente si quiere mantenerlo así o solo Admin.
 - AdminPage tab "Monitoreo" se eliminó con Grafana — los KPIs/snapshot pueden volver como widget header del AdminPage si el cliente los pide.
 - Onboarding fuerza profile-completion antes de TODO (cotizar/facturar). Si el cliente quiere que pueda navegar el landing sin completar perfil, ajustar la prioridad de `needsOnboarding` en App.tsx.
 - Rate limit del login está en 5/min — útil pero molesta en testing manual. Considerar bajar a 10/min en dev.
@@ -616,9 +615,20 @@ Lista consolidada para FASE 11:
 
 ---
 
+## 🩹 Hot-fixes post-demo
+
+### 2026-04-30 (mañana)
+- **fix(auth-ui): account_type `'personal'` → `'particular'`** — el AuthModal enviaba un valor que no matcheaba `Literal['empresa','particular']` del backend → 422 al registrar. Commits `e3556d4` (initial state) + `8ddb404` (botones del selector). Branch `fix/auth-account-type-buttons`.
+- **fix(routing): admin solo ve AdminPage** — admin autenticado ya no pasa por landing ni dashboard cliente; AppShell renderiza `AdminPage` directo. "Salir" del panel hace logout. `#admin` sin sesión admin → redirige a landing. Commit `a97c51c`. Branch `fix/admin-only-route`.
+
+> Workflow post-demo: cada fix va en branch dedicada (`fix/<slug>`) y se mergea a `main`. Nunca commits directos a `main`.
+
+---
+
 ## 🔖 PUNTO DE RETOMA — siguiente sesión
 
 **Estado al cerrar 2026-04-29 ~8:30pm GMT-4:** sitio en vivo, demo-ready con datos vacíos.
+**Hot-fixes 2026-04-30:** registro funcionando, admin va directo al panel.
 
 ### Para el cliente (demo):
 1. Ir a https://tundra-connection.vercel.app
