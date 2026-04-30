@@ -179,7 +179,7 @@ function RegisterForm({ onSuccess }: { onSuccess: () => void }): JSX.Element {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [accountType, setAccountType] = useState<AccountType>('personal');
+  const [accountType, setAccountType] = useState<AccountType>('particular');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
