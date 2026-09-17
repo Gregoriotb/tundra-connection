@@ -99,13 +99,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
-# ── CORS (R8) ────────────────────────────────────────────────────────────────
+cors_origins = [
+    settings.FRONTEND_URL,
+    "https://tundra-connection.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+# Elimina vacíos y duplicados manteniendo 'https://'
+cors_origins = list(set([o for o in cors_origins if o]))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    allow_headers=["*"],
     expose_headers=["X-Request-Id"],
     max_age=600,
 )

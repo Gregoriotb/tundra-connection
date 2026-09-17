@@ -74,7 +74,10 @@ class Settings(BaseSettings):
     @field_validator("FRONTEND_URL")
     @classmethod
     def _frontend_url_no_trailing_slash(cls, v: str) -> str:
-        return v.rstrip("/")
+        v = v.rstrip("/")
+        if v and not v.startswith("http://") and not v.startswith("https://"):
+            v = f"https://{v}"
+        return v
 
     def assert_production_safe(self) -> None:
         """Llamar al arrancar en prod. Lanza si hay configuración insegura."""
