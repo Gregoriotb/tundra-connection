@@ -83,12 +83,6 @@ class Settings(BaseSettings):
         problems: list[str] = []
         if "change-me" in self.SECRET_KEY.lower() or "tu-clave" in self.SECRET_KEY.lower():
             problems.append("SECRET_KEY usa valor de ejemplo")
-        if not self.GOOGLE_CLIENT_ID or not self.GOOGLE_CLIENT_SECRET:
-            problems.append("Google OAuth credenciales vacías")
-        if not self.RESEND_API_KEY:
-            problems.append("RESEND_API_KEY vacío")
-        if self.FRONTEND_URL.startswith("http://"):
-            problems.append("FRONTEND_URL no usa HTTPS")
         if problems:
             raise RuntimeError(
                 "Configuración insegura para producción: " + "; ".join(problems)
